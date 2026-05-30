@@ -29,6 +29,10 @@ export interface TaskDefinition {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  /** If set, PhaseExecutor loads this gstack skill at runtime and injects into systemPrompt */
+  skillName?: string;
+  /** Fallback prompt when skillName's skill is not found */
+  fallbackPrompt?: string;
 }
 
 /**

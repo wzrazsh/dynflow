@@ -55,16 +55,30 @@ export class PhaseExecutor {
           return { ...cached, cached: true };
         }
 
+        // If task has a skillName, load and inject the skill into systemPrompt
+        let effectiveTask = task;
+        if (task.skillName) {
+          const { loadSkillForPrompt } = await import('../gstack/skill-loader.js');
+          const skillPrompt = await loadSkillForPrompt({
+            skillName: task.skillName,
+            fallbackPrompt: task.fallbackPrompt ?? task.systemPrompt,
+          });
+          effectiveTask = {
+            ...task,
+            systemPrompt: skillPrompt,
+          };
+        }
+
         this.eventEmitter.emit({
           type: 'agent:start',
-          agentId: task.id,
+          agentId: effectiveTask.id,
           phaseName: phase.name,
           timestamp: Date.now(),
-          model: task.model ?? 'default',
+          model: effectiveTask.model ?? 'default',
         });
 
         try {
-          const result = await this.agentExecutor.execute(task, phase.name, ctx);
+          const result = await this.agentExecutor.execute(effectiveTask, phase.name, ctx);
 
           // Cache successful results only
           if (result.status === 'success') {
@@ -84,7 +98,7 @@ export class PhaseExecutor {
         } catch (error) {
           errorCount++;
           const errorResult: AgentResult = {
-            id: task.id,
+            id: effectiveTask.id,
             phaseName: phase.name,
             content: '',
             tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
@@ -92,7 +106,7 @@ export class PhaseExecutor {
             status: 'error',
             error: (error as Error).message,
             cached: false,
-            model: task.model ?? 'default',
+            model: effectiveTask.model ?? 'default',
             startedAt: Date.now(),
             completedAt: Date.now(),
           };

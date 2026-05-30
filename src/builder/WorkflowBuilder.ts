@@ -32,6 +32,8 @@ export class PhaseBuilder {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    skillName?: string;
+    fallbackPrompt?: string;
   }): this {
     if (!id || id.trim().length === 0) {
       throw new ConfigurationError('Task id is required');
@@ -52,6 +54,8 @@ export class PhaseBuilder {
       model: config.model,
       temperature: config.temperature,
       maxTokens: config.maxTokens,
+      skillName: config.skillName,
+      fallbackPrompt: config.fallbackPrompt,
     });
     return this;
   }

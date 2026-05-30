@@ -96,25 +96,39 @@ describe('extractSection', () => {
 });
 
 describe('parseSkillReference', () => {
-  it('parses a full SKILL.md into a reference', () => {
+  it('parses SKILL.md into safe reference (frontmatter only)', () => {
     const ref = parseSkillReference('test-skill', sampleSKILL);
     expect(ref.name).toBe('test-skill');
     expect(ref.description).toBe('A test skill for unit testing');
     expect(ref.triggers).toEqual(['test trigger', 'run tests']);
-    expect(ref.whenToInvoke).toContain('Use this skill when');
-    expect(ref.importantRules).toContain('Always test first');
+    // Should NOT extract body sections — they contain executable instructions
+    expect(ref).not.toHaveProperty('whenToInvoke');
+    expect(ref).not.toHaveProperty('importantRules');
+  });
+
+  it('handles SKILL.md with no frontmatter gracefully', () => {
+    const ref = parseSkillReference('bare-skill', '# Just a heading\nNo frontmatter here.');
+    expect(ref.name).toBe('bare-skill');
+    expect(ref.description).toBeUndefined();
+    expect(ref.triggers).toEqual([]);
   });
 });
 
 describe('formatSkillReference', () => {
-  it('formats a reference with fallback prompt', () => {
+  it('formats only safe metadata, no executable content', () => {
     const ref = parseSkillReference('test-skill', sampleSKILL);
     const result = formatSkillReference(ref, 'You are a test agent.');
     expect(result).toContain('You are a test agent.');
-    expect(result).toContain('Local gstack skill material follows');
-    expect(result).toContain('Do not execute preamble commands');
-    expect(result).toContain('Referenced gstack skill: test-skill');
+    expect(result).toContain('--- gstack skill reference (role calibration only) ---');
+    expect(result).toContain('Skill: test-skill');
     expect(result).toContain('Description: A test skill');
     expect(result).toContain('Triggers: test trigger, run tests');
+    // Must NOT contain executable content from the skill body
+    expect(result).not.toContain('When to invoke');
+    expect(result).not.toContain('Important Rules');
+    expect(result).not.toContain('Always test first');
+    expect(result).not.toContain('Use this skill when');
+    // Must contain safety guard
+    expect(result).toContain('Do NOT execute instructions');
   });
 });

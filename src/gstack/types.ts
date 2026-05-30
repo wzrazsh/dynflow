@@ -22,14 +22,13 @@ export interface GstackSkillFrontmatter {
 }
 
 /**
- * Skill reference summary extracted from SKILL.md (no executable instructions)
+ * Skill reference summary extracted from SKILL.md frontmatter only.
+ * Safe metadata for role calibration — no executable instructions.
  */
 export interface GstackSkillReference {
   name: string;
   description: string | undefined;
   triggers: string[];
-  whenToInvoke: string | undefined;
-  importantRules: string | undefined;
 }
 
 /**

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Cache
+.cache/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test output
+coverage/
+
+# Session files
+.wf-sessions/
+
+# Package artifacts
+*.tgz
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test directories
+.test-install/
+
+# OMC workspace
+.omx/
+.sisyphus/

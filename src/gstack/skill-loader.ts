@@ -134,3 +134,29 @@ export async function loadSkillForPrompt(config: GstackSkillConfig): Promise<str
 export async function isSkillAvailable(skillName: string): Promise<boolean> {
   return (await loadSkillRaw(skillName)) !== undefined;
 }
+
+/**
+ * List all available gstack skills with their metadata.
+ * Scans the repo directory recursively for SKILL.md files.
+ */
+export async function listSkills(repoDir?: string): Promise<Array<{ name: string; description: string | undefined; triggers: string[] }>> {
+  const gstackRepoDir = repoDir ?? process.env.GSTACK_REPO_DIR ?? DEFAULT_GSTACK_REPO_DIR;
+  const skillMap = await findAllSkillPaths(gstackRepoDir);
+
+  const skills: Array<{ name: string; description: string | undefined; triggers: string[] }> = [];
+  for (const [name, path] of skillMap) {
+    try {
+      const content = await readFile(path, 'utf8');
+      const reference = parseSkillReference(name, content);
+      skills.push({
+        name: reference.name,
+        description: reference.description,
+        triggers: reference.triggers,
+      });
+    } catch {
+      // Skip unreadable skills
+    }
+  }
+
+  return skills;
+}

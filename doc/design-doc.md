@@ -75,6 +75,8 @@ interface TaskDefinition {
   model?: string;                  // 使用的模型
   temperature?: number;            // 温度参数
   maxTokens?: number;              // 最大token数
+  skillName?: string;              // gstack 技能名，运行时自动加载并注入 systemPrompt
+  fallbackPrompt?: string;         // 技能未找到时的备用提示词
 }
 ```
 
@@ -268,6 +270,15 @@ interface PhaseResult {
 ### 3. 缓存策略
 
 可通过 `cacheDir` 配置磁盘持久化，或实现自定义缓存。
+
+### 4. Gstack 技能集成
+
+SDK 集成了 gstack 技能系统——将 AI 代理配置存储为 SKILL.md 文件，运行时按需加载。
+
+- `listSkills(repoDir?)` — 扫描并返回所有可用技能的名称、描述、触发词
+- `TaskDefinition.skillName` — 在任务中引用 gstack 技能，运行时自动加载
+- `loadSkillForPrompt(config)` — 加载技能并格式化为安全的 system prompt
+- 仅提取 frontmatter 元数据（description + triggers），不注入可执行指令
 
 ## 性能考虑
 

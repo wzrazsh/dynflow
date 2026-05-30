@@ -264,6 +264,79 @@ const result2 = await Workflow.from({
 // Completed phases are skipped; interrupted phase re-runs all tasks
 ```
 
+## Gstack Integration
+
+The SDK integrates with [gstack](https://github.com/gstack) skills — reusable AI agent configurations stored as SKILL.md files. Skills are loaded at runtime from a local gstack installation.
+
+### Discovering Available Skills
+
+```typescript
+import { listSkills } from 'dynamic-workflow-engine';
+
+// List all available gstack skills
+const skills = await listSkills();
+// → [{ name: 'plan-ceo-review', description: '...', triggers: [...] }, ...]
+
+// List skills from a specific directory
+const customSkills = await listSkills('/path/to/gstack');
+```
+
+### Using Skills in Tasks
+
+Reference gstack skills directly in `TaskDefinition` — the runtime automatically loads and injects them:
+
+```typescript
+const workflow = Workflow.from({
+  name: 'review',
+  llm: client,
+  phases: [{
+    name: 'review',
+    tasks: [{
+      id: 'ceo-review',
+      systemPrompt: 'You are a CEO reviewer.',
+      skillName: 'plan-ceo-review',          // ← gstack skill name
+      fallbackPrompt: 'Focus on product value.', // ← used if skill not found
+      task: 'Review whether we should add streaming support.',
+    }],
+  }],
+});
+```
+
+### Skill Configuration
+
+```typescript
+interface TaskDefinition {
+  // ... existing fields ...
+  skillName?: string;        // gstack skill to load at runtime
+  fallbackPrompt?: string;   // fallback when skillName's skill is not found
+}
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GSTACK_REPO_DIR` | Path to gstack repo checkout | `E:\workspace\gstack` |
+| `GSTACK_SKILLS_DIR` | Path to installed skills directory | `~/.codex/skills` |
+
+### Low-Level API
+
+```typescript
+import { loadSkillRaw, loadSkillForPrompt, isSkillAvailable } from 'dynamic-workflow-engine';
+
+// Load raw SKILL.md content
+const raw = await loadSkillRaw('plan-ceo-review');
+
+// Load and format for system prompt injection (with safety guards)
+const prompt = await loadSkillForPrompt({
+  skillName: 'plan-ceo-review',
+  fallbackPrompt: 'You are a reviewer.',
+});
+
+// Check if a skill is available
+const available = await isSkillAvailable('plan-ceo-review');
+```
+
 ## Architecture
 
 ```

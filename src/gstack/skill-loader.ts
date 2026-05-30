@@ -2,7 +2,7 @@ import { access, readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { GstackSkillConfig } from './types.js';
-import { parseSkillReference, formatSkillReference } from './skill-parser.js';
+import { extractFrontmatter, parseSkillReference, formatSkillReference } from './skill-parser.js';
 
 const DEFAULT_GSTACK_REPO_DIR = 'E:\\workspace\\gstack';
 
@@ -19,6 +19,40 @@ function normalizeName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+async function findAllSkillPaths(repoDir: string): Promise<Map<string, string>> {
+  const skillMap = new Map<string, string>();
+
+  async function walk(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.name === 'SKILL.md') {
+        try {
+          const content = await readFile(fullPath, 'utf8');
+          const fm = extractFrontmatter(content);
+          const nameMatch = fm.match(/^name:\s*(.+)$/m);
+          if (nameMatch) {
+            skillMap.set(nameMatch[1].trim(), fullPath);
+          }
+        } catch {
+          // Skip unreadable files
+        }
+      }
+    }
+  }
+
+  await walk(repoDir);
+  return skillMap;
+}
+
 /**
  * Load raw SKILL.md content from filesystem.
  * Searches the repo directory first, then the installed skills directory.
@@ -33,6 +67,15 @@ export async function loadSkillRaw(
 
   if (await exists(directSkillPath)) {
     return readFile(directSkillPath, 'utf8');
+  }
+
+  // Strategy 1.5: Recursive scan with frontmatter matching
+  // Handles skills nested in subdirectories (e.g. browser-skills/hackernews-frontpage)
+  // and the root gstack skill (repoDir/SKILL.md)
+  const skillMap = await findAllSkillPaths(gstackRepoDir);
+  const matchedPath = skillMap.get(skillName);
+  if (matchedPath) {
+    return readFile(matchedPath, 'utf8');
   }
 
   const gstackSkillsDir =

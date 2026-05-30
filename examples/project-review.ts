@@ -19,8 +19,6 @@
 import { Workflow, OpenAICompatibleClient } from '../src/index.js';
 import { loadSkillForPrompt } from '../src/gstack/index.js';
 
-const DEFAULT_GSTACK_REPO_DIR = 'E:\\workspace\\gstack';
-
 type ReviewType = 'feature' | 'pr' | 'release';
 
 interface ReviewConfig {

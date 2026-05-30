@@ -18,8 +18,6 @@
 import { Workflow, OpenAICompatibleClient } from '../src/index.js';
 import { loadSkillForPrompt, loadSkillRaw } from '../src/gstack/index.js';
 
-const DEFAULT_GSTACK_REPO_DIR = 'E:\\workspace\\gstack';
-
 interface GstackAgentSpec {
   id: string;
   skillName: string;

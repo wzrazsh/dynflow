@@ -8,3 +8,6 @@ export * from './runtime/index.js';
 export * from './builder/index.js';
 export { Workflow } from './workflow.js';
 export type { WorkflowConfig } from './workflow.js';
+
+export { loadSkillRaw, loadSkillForPrompt, isSkillAvailable } from './gstack/index.js';
+export type { GstackSkillConfig, GstackSkillFrontmatter, GstackSkillReference, GstackPreambleTier } from './gstack/index.js';

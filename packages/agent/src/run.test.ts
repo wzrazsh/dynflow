@@ -1,16 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const mockCreate = vi.fn();
+const mockFetch = vi.fn();
 
-vi.mock("openai", () => ({
-  default: vi.fn(() => ({
-    chat: {
-      completions: {
-        create: mockCreate,
-      },
-    },
-  })),
-}));
+vi.stubGlobal("fetch", mockFetch);
 
 describe("agent executeAgent", () => {
   beforeEach(() => {
@@ -29,8 +21,11 @@ describe("agent executeAgent", () => {
   });
 
   it("returns success with output on successful API call", async () => {
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: "42" } }],
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "42" } }],
+      }),
     });
 
     const { executeAgent } = await import("./run.js");
@@ -38,12 +33,15 @@ describe("agent executeAgent", () => {
 
     expect(result.success).toBe(true);
     expect(result.output).toBe("42");
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("returns success with empty string when no content returned", async () => {
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: null } }],
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: null } }],
+      }),
     });
 
     const { executeAgent } = await import("./run.js");
@@ -54,21 +52,25 @@ describe("agent executeAgent", () => {
   });
 
   it("returns error when OpenAI API call fails", async () => {
-    mockCreate.mockRejectedValueOnce(new Error("Insufficient quota"));
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => '{"type":"error","error":{"type":"AuthError","message":"Invalid API key."}}',
+    });
 
     const { executeAgent } = await import("./run.js");
     const result = await executeAgent();
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Insufficient quota");
+    expect(result.error).toContain("API error (status 401)");
   });
 
   it("returns error on timeout (AbortController)", { timeout: 15000 }, async () => {
     process.env.AGENT_TIMEOUT_MS = "10";
-    // Mock checks signal and rejects when aborted
-    mockCreate.mockImplementationOnce(
-      async (_body: unknown, options?: { signal?: AbortSignal }) => {
-        return new Promise<void>((_resolve, reject) => {
+    // Mock fetch to hang until signal abort
+    mockFetch.mockImplementationOnce(
+      (_url: string, options?: { signal?: AbortSignal }) => {
+        return new Promise((_resolve, reject) => {
           if (options?.signal) {
             if (options.signal.aborted) {
               reject(new Error("The operation was aborted"));
@@ -109,32 +111,36 @@ describe("agent executeAgent", () => {
     expect(result.error).toContain("AGENT_PROMPT");
   });
 
-  it("uses default model 'gpt-4o' when AGENT_MODEL not set", async () => {
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: "ok" } }],
+  it("uses default model 'mimo-v2.5-free' when AGENT_MODEL not set", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "ok" } }],
+      }),
     });
 
     const { executeAgent } = await import("./run.js");
     await executeAgent();
 
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-4o" }),
-      expect.any(Object),
-    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.model).toBe("mimo-v2.5-free");
   });
 
   it("uses custom model from AGENT_MODEL env var", async () => {
     process.env.AGENT_MODEL = "gpt-3.5-turbo";
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: "ok" } }],
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "ok" } }],
+      }),
     });
 
     const { executeAgent } = await import("./run.js");
     await executeAgent();
 
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-3.5-turbo" }),
-      expect.any(Object),
-    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(callBody.model).toBe("gpt-3.5-turbo");
   });
 });

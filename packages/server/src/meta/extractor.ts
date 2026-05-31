@@ -587,7 +587,7 @@ function extractFromMarkdown(
   const skills: ExtractedSkill[] = [];
 
   // Try frontmatter (YAML between --- markers)
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
+  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!frontmatterMatch) {
     return { agents: [], skills: [] };
   }

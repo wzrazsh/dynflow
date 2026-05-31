@@ -391,6 +391,36 @@ export function getAllDomains(): Domain[] {
 }
 
 /**
+ * List domains with pagination. Returns the subset for the requested page
+ * along with the total number of domains.
+ */
+export function getDomainsPaginated(
+  page: number,
+  pageSize: number,
+): { domains: Domain[]; total: number } {
+  const db = getDb();
+  const countRow = withRetry(() =>
+    db.prepare('SELECT COUNT(*) as count FROM domains').get(),
+  ) as { count: number };
+  const total = countRow.count;
+  const offset = (page - 1) * pageSize;
+  const rows = withRetry(() =>
+    db
+      .prepare('SELECT * FROM domains ORDER BY name ASC LIMIT ? OFFSET ?')
+      .all(pageSize, offset),
+  ) as Record<string, unknown>[];
+  return {
+    domains: rows.map((row) => ({
+      id: row.id as string,
+      name: row.name as string,
+      description: row.description as string,
+      icon: (row.icon as string) ?? undefined,
+    })),
+    total,
+  };
+}
+
+/**
  * Delete a domain by ID (cascades to sources, roles, agents, skills).
  */
 export function deleteDomain(id: string): void {
@@ -458,6 +488,37 @@ export function getSourcesByDomain(domainId: string): AgentSource[] {
     url: row.url as string,
     description: row.description as string,
   }));
+}
+
+/**
+ * List all agent sources with pagination. Returns the subset for the
+ * requested page along with the total number of sources.
+ */
+export function getSourcesPaginated(
+  page: number,
+  pageSize: number,
+): { sources: AgentSource[]; total: number } {
+  const db = getDb();
+  const countRow = withRetry(() =>
+    db.prepare('SELECT COUNT(*) as count FROM agent_sources').get(),
+  ) as { count: number };
+  const total = countRow.count;
+  const offset = (page - 1) * pageSize;
+  const rows = withRetry(() =>
+    db
+      .prepare('SELECT * FROM agent_sources ORDER BY name ASC LIMIT ? OFFSET ?')
+      .all(pageSize, offset),
+  ) as Record<string, unknown>[];
+  return {
+    sources: rows.map((row) => ({
+      id: row.id as string,
+      domainId: row.domain_id as string,
+      name: row.name as string,
+      url: row.url as string,
+      description: row.description as string,
+    })),
+    total,
+  };
 }
 
 /**
@@ -614,6 +675,40 @@ export function getAgentsByRole(roleId: string): PredefinedAgent[] {
     systemPrompt: row.system_prompt as string,
     availableSkills: JSON.parse(row.available_skills as string) as string[],
   }));
+}
+
+/**
+ * List all predefined agents with pagination. Returns the subset for the
+ * requested page along with the total number of predefined agents.
+ */
+export function getPredefinedAgentsPaginated(
+  page: number,
+  pageSize: number,
+): { agents: PredefinedAgent[]; total: number } {
+  const db = getDb();
+  const countRow = withRetry(() =>
+    db.prepare('SELECT COUNT(*) as count FROM predefined_agents').get(),
+  ) as { count: number };
+  const total = countRow.count;
+  const offset = (page - 1) * pageSize;
+  const rows = withRetry(() =>
+    db
+      .prepare(
+        'SELECT * FROM predefined_agents ORDER BY name ASC LIMIT ? OFFSET ?',
+      )
+      .all(pageSize, offset),
+  ) as Record<string, unknown>[];
+  return {
+    agents: rows.map((row) => ({
+      id: row.id as string,
+      roleId: row.role_id as string,
+      name: row.name as string,
+      description: row.description as string,
+      systemPrompt: row.system_prompt as string,
+      availableSkills: JSON.parse(row.available_skills as string) as string[],
+    })),
+    total,
+  };
 }
 
 /**

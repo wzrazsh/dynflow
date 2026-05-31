@@ -53,3 +53,6 @@ docker-compose.override.yml
 # Temp files
 *.tmp
 *.temp
+
+# Game artifacts
+mathquest.html

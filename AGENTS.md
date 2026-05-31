@@ -223,6 +223,16 @@ Start-Process -FilePath "cmd.exe" `
 
 **Key rule**: Always redirect stdout/stderr to a file with `> file.log 2>&1` when starting background processes that produce continuous output. Do NOT rely on `-WindowStyle Hidden` alone.
 
+### Docker daemon startup (Linux/WSL)
+
+When running in WSL or Linux, Docker daemon may not be running by default. Start it in background:
+
+```bash
+sudo nohup dockerd >/tmp/dockerd.log 2>&1 < /dev/null &
+```
+
+Verify with: `docker info` or `docker ps`
+
 ## Performance Considerations
 
 - Max 16 concurrent agents (configurable)

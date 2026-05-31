@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { post, put } from '../api/client.js';
-import type { WorkflowTemplate, ApiResponse, CreateTemplateRequest } from '@dynflow/shared';
+import { orchestrateWorkflow } from '../api/workflows';
+import type { WorkflowTemplate, ApiResponse, CreateTemplateRequest, WorkflowDefinition } from '@dynflow/shared';
 
 const EXAMPLE_SCRIPT = `phase("Research", () => {
   agent("researcher-1", "Research quantum computing impact on cryptography");
@@ -49,6 +50,10 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
   const [tags, setTags] = useState<string[]>(template?.tags || []);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<'manual' | 'ai'>('manual');
+  const [userRequest, setUserRequest] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generatedScript, setGeneratedScript] = useState<string | null>(null);
 
   const isEdit = !!template;
 
@@ -136,6 +141,58 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
     }
   }
 
+  function workflowDefToScript(wf: WorkflowDefinition): string {
+    function escape(s: string): string {
+      return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    }
+    const lines: string[] = [];
+    for (const phase of wf.phases) {
+      lines.push(`phase('${escape(phase.name)}', () => {`);
+      for (const agent of phase.agents) {
+        const prompt = agent.prompt ? `'${escape(agent.prompt)}'` : '';
+        if (agent.agentId && prompt) {
+          lines.push(`  agent('${escape(agent.name)}', { agentId: '${escape(agent.agentId)}', prompt: ${prompt} });`);
+        } else if (agent.agentId) {
+          lines.push(`  agent('${escape(agent.name)}', { agentId: '${escape(agent.agentId)}' });`);
+        } else {
+          lines.push(`  agent('${escape(agent.name)}', ${prompt || "''"});`);
+        }
+      }
+      lines.push('});');
+    }
+    return lines.join('\n');
+  }
+
+  async function handleGenerate() {
+    if (!userRequest.trim()) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const result = await orchestrateWorkflow(userRequest.trim());
+      if (result.success && result.data) {
+        const script = workflowDefToScript(result.data);
+        setGeneratedScript(script);
+        if (!name.trim()) {
+          setName(result.data.name);
+        }
+      } else {
+        setError(result.error || 'Failed to generate workflow');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate workflow');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function handleUseScript() {
+    if (generatedScript) {
+      setScript(generatedScript);
+      setMode('manual');
+      setGeneratedScript(null);
+    }
+  }
+
   function handleOverlayClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) {
       onClose();
@@ -165,6 +222,41 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
           </button>
         </div>
 
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button
+            type="button"
+            onClick={() => setMode('manual')}
+            style={{
+              padding: '6px 16px',
+              border: mode === 'manual' ? 'none' : '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              backgroundColor: mode === 'manual' ? '#3b82f6' : '#fff',
+              color: mode === 'manual' ? '#fff' : '#374151',
+            }}
+          >
+            &#9998;&#65039; Manual
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('ai')}
+            style={{
+              padding: '6px 16px',
+              border: mode === 'ai' ? 'none' : '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              backgroundColor: mode === 'ai' ? '#3b82f6' : '#fff',
+              color: mode === 'ai' ? '#fff' : '#374151',
+            }}
+          >
+            &#129302; AI Generate
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit}>
           {/* Name */}
           <div style={{ marginBottom: 16 }}>
@@ -180,7 +272,7 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
               value={name}
               onChange={(e) => { setName(e.target.value); setError(null); }}
               placeholder="My Template"
-              disabled={loading}
+              disabled={loading || generating}
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -206,7 +298,7 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional description"
-              disabled={loading}
+              disabled={loading || generating}
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -218,98 +310,195 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
             />
           </div>
 
-          {/* Script */}
-          <div style={{ marginBottom: 16 }}>
-            <label
-              htmlFor="tmpl-script"
-              style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
-            >
-              Workflow Script *
-            </label>
-            <textarea
-              id="tmpl-script"
-              value={script}
-              onChange={(e) => { setScript(e.target.value); setError(null); }}
-              placeholder={EXAMPLE_SCRIPT}
-              disabled={loading}
-              rows={10}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: '0.8125rem',
-                fontFamily: "'Courier New', Courier, monospace",
-                resize: 'vertical',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
+          {mode === 'manual' ? (
+            <>
+              {/* Script */}
+              <div style={{ marginBottom: 16 }}>
+                <label
+                  htmlFor="tmpl-script"
+                  style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
+                >
+                  Workflow Script *
+                </label>
+                <textarea
+                  id="tmpl-script"
+                  value={script}
+                  onChange={(e) => { setScript(e.target.value); setError(null); }}
+                  placeholder={EXAMPLE_SCRIPT}
+                  disabled={loading}
+                  rows={10}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    fontSize: '0.8125rem',
+                    fontFamily: "'Courier New', Courier, monospace",
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
 
-          {/* Tags */}
-          <div style={{ marginBottom: 16 }}>
-            <label
-              htmlFor="tmpl-tags"
-              style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
-            >
-              Tags
-            </label>
-            <input
-              id="tmpl-tags"
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={handleTagKeyDown}
-              onBlur={handleTagBlur}
-              placeholder="Type a tag and press Enter or comma"
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: '0.875rem',
-                boxSizing: 'border-box',
-              }}
-            />
-            {tags.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
+              {/* Tags */}
+              <div style={{ marginBottom: 16 }}>
+                <label
+                  htmlFor="tmpl-tags"
+                  style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
+                >
+                  Tags
+                </label>
+                <input
+                  id="tmpl-tags"
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={handleTagKeyDown}
+                  onBlur={handleTagBlur}
+                  placeholder="Type a tag and press Enter or comma"
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    fontSize: '0.875rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                {tags.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          backgroundColor: '#e5e7eb',
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          fontSize: '0.75rem',
+                          lineHeight: '1.5',
+                        }}
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          disabled={loading}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            padding: 0,
+                            fontSize: '0.875rem',
+                            lineHeight: 1,
+                            color: '#6b7280',
+                          }}
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ marginBottom: 16 }}>
+              <label
+                htmlFor="tmpl-request"
+                style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
+              >
+                What do you want the workflow to do?
+              </label>
+              <textarea
+                id="tmpl-request"
+                value={userRequest}
+                onChange={(e) => {
+                  setUserRequest(e.target.value);
+                  setError(null);
+                }}
+                placeholder="e.g., Research quantum computing, then synthesize findings into a report"
+                disabled={generating}
+                rows={6}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: '0.875rem',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              <div style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={generating || !userRequest.trim()}
+                  style={{
+                    padding: '8px 20px',
+                    backgroundColor: generating ? '#6ee7b7' : '#10b981',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    cursor: generating || !userRequest.trim() ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {generating ? 'Generating...' : 'Generate Workflow'}
+                </button>
+              </div>
+
+              {generatedScript && (
+                <div style={{ marginTop: 16 }}>
+                  <label
+                    style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
+                  >
+                    Generated Script
+                  </label>
+                  <textarea
+                    readOnly
+                    value={generatedScript}
+                    rows={10}
                     style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      backgroundColor: '#e5e7eb',
-                      padding: '2px 8px',
-                      borderRadius: 12,
-                      fontSize: '0.75rem',
-                      lineHeight: '1.5',
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 6,
+                      fontSize: '0.8125rem',
+                      fontFamily: "'Courier New', Courier, monospace",
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                      backgroundColor: '#f9fafb',
+                      color: '#374151',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleUseScript}
+                    style={{
+                      marginTop: 8,
+                      padding: '8px 20px',
+                      backgroundColor: '#3b82f6',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
                     }}
                   >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      disabled={loading}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        padding: 0,
-                        fontSize: '0.875rem',
-                        lineHeight: 1,
-                        color: '#6b7280',
-                      }}
-                    >
-                      &times;
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+                    Use This Script
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -332,7 +521,7 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
             <button
               type="button"
               onClick={onClose}
-              disabled={loading}
+              disabled={loading || generating}
               style={{
                 padding: '8px 20px',
                 backgroundColor: '#fff',
@@ -341,27 +530,29 @@ export default function TemplateForm({ template, onClose, onSaved, onError }: Te
                 borderRadius: 6,
                 fontSize: '0.875rem',
                 fontWeight: 500,
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: loading || generating ? 'not-allowed' : 'pointer',
               }}
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: '8px 20px',
-                backgroundColor: loading ? '#93c5fd' : '#3b82f6',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: loading ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {loading ? 'Saving...' : isEdit ? 'Update Template' : 'Create Template'}
-            </button>
+            {mode === 'manual' && (
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  padding: '8px 20px',
+                  backgroundColor: loading ? '#93c5fd' : '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {loading ? 'Saving...' : isEdit ? 'Update Template' : 'Create Template'}
+              </button>
+            )}
           </div>
         </form>
       </div>

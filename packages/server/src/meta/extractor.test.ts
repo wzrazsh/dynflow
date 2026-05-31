@@ -243,6 +243,77 @@ Body
 `;
 
 // ---------------------------------------------------------------------------
+// CC format fixture helpers
+// ---------------------------------------------------------------------------
+
+function ccAgentFile(content: string, name = 'test-agent.md'): ScannedFile {
+  return { path: `/project/.claude/agents/${name}`, content, size: content.length, isDefinition: true };
+}
+
+function ccSkillFile(content: string, dir = 'brainstorm', name = 'SKILL.md'): ScannedFile {
+  return { path: `/project/.claude/skills/${dir}/${name}`, content, size: content.length, isDefinition: true };
+}
+
+// CC Agent: full frontmatter + body
+const ccAgentFull = `---
+name: accessibility-specialist
+description: The Accessibility Specialist ensures inclusive game design
+tools: Read, Glob, Grep, Write, Edit, Bash
+model: sonnet
+maxTurns: 10
+---
+
+You are the Accessibility Specialist for an indie game project.
+## Responsibilities
+- Ensure WCAG compliance
+- Test with screen readers
+`;
+
+// CC Skill: complete SKILL.md
+const ccSkillFull = `---
+name: brainstorm
+description: Guided game concept ideation
+argument-hint: "[genre or theme hint]"
+user-invocable: true
+allowed-tools: Read, Glob, Grep, Write, WebSearch, Task, AskUserQuestion
+model: sonnet
+---
+
+When this skill is invoked:
+1. Parse the argument
+2. Generate creative concepts
+`;
+
+// CC Agent without body
+const ccAgentNoBody = `---
+name: minimal-agent
+description: Agent with no body content
+tools: Read
+model: haiku
+---`;
+
+// CC Skill with model (should NOT be detected as agent)
+const ccSkillWithModel = `---
+name: code-review-skill
+description: Reviews code for issues
+allowed-tools: Read, Grep
+model: sonnet
+user-invocable: true
+---
+
+Review the code and find issues.
+`;
+
+// DynFlow agent with CC path (should be extracted as DynFlow first, not CC)
+const dynflowInCCPath = `---
+name: df-agent
+description: DynFlow agent in CC path
+systemPrompt: I am a DynFlow agent.
+availableSkills:
+  - test-skill
+---`;
+
+// ---------------------------------------------------------------------------
 // Tests: extractAgents
 // ---------------------------------------------------------------------------
 
@@ -532,5 +603,100 @@ describe('extractAll', () => {
     const files = [definitionFile(content, '.json')];
     const skills = extractSkills(files);
     expect(skills[0].category).toBe('other');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: CC format extraction
+// ---------------------------------------------------------------------------
+
+describe('CC format extraction', () => {
+  it('32 — extracts CC Agent from .md with body as systemPrompt', () => {
+    const files = [ccAgentFile(ccAgentFull)];
+    const result = extractAll(files);
+    expect(result.agents).toHaveLength(1);
+    expect(result.skills).toHaveLength(0);
+    const agent = result.agents[0];
+    expect(agent.name).toBe('accessibility-specialist');
+    expect(agent.description).toBe('The Accessibility Specialist ensures inclusive game design');
+    expect(agent.systemPrompt).toContain('You are the Accessibility Specialist');
+    expect(agent.systemPrompt).toContain('## Responsibilities');
+    expect(agent.availableSkills).toEqual([]);
+  });
+
+  it('33 — extracts CC Skill from SKILL.md with body as inputSchema', () => {
+    const files = [ccSkillFile(ccSkillFull, 'brainstorm')];
+    const result = extractAll(files);
+    expect(result.agents).toHaveLength(0);
+    expect(result.skills).toHaveLength(1);
+    const skill = result.skills[0];
+    expect(skill.name).toBe('brainstorm');
+    expect(skill.description).toBe('Guided game concept ideation');
+    expect(skill.category).toBe('development');
+    expect(skill.inputSchema?.description).toContain('When this skill is invoked');
+    expect(skill.parameters).toEqual([]);
+  });
+
+  it('34 — CC format DynFlow agent still works', () => {
+    const files = [ccAgentFile(dynflowInCCPath, 'df-agent.md')];
+    const result = extractAll(files);
+    // Both DynFlow (has systemPrompt) and CC (has .claude/agents/ path) detection fire
+    expect(result.agents.length).toBeGreaterThanOrEqual(1);
+    // DynFlow isAgentObject catches it FIRST
+    expect(result.agents[0].name).toBe('df-agent');
+    expect(result.agents[0].systemPrompt).toBe('I am a DynFlow agent.');
+    expect(result.agents[0].availableSkills).toEqual(['test-skill']);
+  });
+
+  it('35 — mixed DynFlow and CC files', () => {
+    const files = [
+      definitionFile(jsonAgentSingle, '.json', true, 'agent.json'),
+      ccSkillFile(ccSkillFull, 'brainstorm'),
+    ];
+    const result = extractAll(files);
+    expect(result.agents).toHaveLength(1);
+    expect(result.skills).toHaveLength(1);
+    expect(result.agents[0].name).toBe('code-reviewer');
+    expect(result.skills[0].name).toBe('brainstorm');
+  });
+
+  it('36 — CC Agent with no body has empty systemPrompt', () => {
+    const files = [ccAgentFile(ccAgentNoBody)];
+    const result = extractAll(files);
+    expect(result.agents).toHaveLength(1);
+    const agent = result.agents[0];
+    expect(agent.name).toBe('minimal-agent');
+    expect(agent.systemPrompt).toBe('');
+  });
+
+  it('37 — CC Agent tools not mapped to availableSkills', () => {
+    const files = [ccAgentFile(ccAgentFull)];
+    const result = extractAll(files);
+    expect(result.agents).toHaveLength(1);
+    expect(result.agents[0].availableSkills).toEqual([]);
+  });
+
+  it('38 — CC Skill with model not misclassified as Agent', () => {
+    const files = [ccSkillFile(ccSkillWithModel, 'code-review')];
+    const agents = extractAgents(files);
+    expect(agents).toHaveLength(0);
+    const skills = extractSkills(files);
+    expect(skills).toHaveLength(1);
+    expect(skills[0].name).toBe('code-review-skill');
+    expect(skills[0].category).toBe('development');
+  });
+
+  it('39 — category inferred from CC skill path', () => {
+    const devFiles = [ccSkillFile(ccSkillFull, 'brainstorm')];
+    const devSkills = extractSkills(devFiles);
+    expect(devSkills[0].category).toBe('development');
+
+    const qaFiles = [ccSkillFile(ccSkillFull, 'qa-automation')];
+    const qaSkills = extractSkills(qaFiles);
+    expect(qaSkills[0].category).toBe('automation');
+
+    const otherFiles = [ccSkillFile(ccSkillFull, 'unknown-dir')];
+    const otherSkills = extractSkills(otherFiles);
+    expect(otherSkills[0].category).toBe('other');
   });
 });

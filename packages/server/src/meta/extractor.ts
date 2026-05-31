@@ -109,6 +109,82 @@ function isSupportedFormat(ext: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// CC format detection helpers
+// ---------------------------------------------------------------------------
+
+function hasNameAndDescription(obj: Record<string, unknown>): boolean {
+  return typeof obj.name === 'string' && obj.name.length > 0
+    && typeof obj.description === 'string';
+}
+
+function isClaudeCodeSkillPath(source: string): boolean {
+  const parts = source.split(/[\\/]/);
+  const idx = parts.findIndex((p) => p === '.claude');
+  return idx >= 0 && parts[idx + 1] === 'skills'
+    && parts[parts.length - 1]?.toLowerCase() === 'skill.md';
+}
+
+function isClaudeCodeAgentPath(source: string): boolean {
+  const parts = source.split(/[\\/]/);
+  const idx = parts.findIndex((p) => p === '.claude');
+  return idx >= 0 && parts[idx + 1] === 'agents';
+}
+
+function hasClaudeCodeSkillMarkers(obj: Record<string, unknown>): boolean {
+  return typeof obj['allowed-tools'] === 'string'
+    || typeof obj.allowedTools === 'string'
+    || obj['user-invocable'] === true
+    || obj.userInvocable === true
+    || typeof obj['argument-hint'] === 'string'
+    || typeof obj.argumentHint === 'string';
+}
+
+function isClaudeCodeSkill(obj: Record<string, unknown>, source: string): boolean {
+  return hasNameAndDescription(obj)
+    && (isClaudeCodeSkillPath(source) || hasClaudeCodeSkillMarkers(obj));
+}
+
+function isClaudeCodeAgent(obj: Record<string, unknown>, source: string): boolean {
+  return hasNameAndDescription(obj)
+    && !hasClaudeCodeSkillMarkers(obj)
+    && (isClaudeCodeAgentPath(source)
+      || typeof obj.tools === 'string'
+      || typeof obj.model === 'string');
+}
+
+function inferClaudeCodeSkillCategory(source: string): SkillCategory {
+  const parts = source.split(/[\\/]/);
+  const claudeIdx = parts.findIndex((p) => p === '.claude');
+  if (claudeIdx < 0 || parts[claudeIdx + 1] !== 'skills') return 'other';
+
+  const dir = parts[claudeIdx + 2] ?? '';
+  if (
+    dir === 'brainstorm' || dir === 'prototype' ||
+    dir.startsWith('create-') || dir.startsWith('design-') ||
+    dir.startsWith('architecture-') || dir === 'code-review' ||
+    dir === 'tech-debt' || dir === 'perf-profile' || dir === 'security-audit'
+  ) {
+    return 'development';
+  }
+  if (dir.startsWith('asset-') || dir === 'art-bible' || dir.startsWith('sound-')) {
+    return 'creative';
+  }
+  if (
+    dir.startsWith('bug-') || dir === 'smoke-check' ||
+    dir.startsWith('qa-') || dir.startsWith('test-') || dir.startsWith('regression-')
+  ) {
+    return 'automation';
+  }
+  if (
+    dir === 'gate-check' || dir === 'milestone-review' ||
+    dir === 'scope-check' || dir.startsWith('sprint-') || dir === 'estimate'
+  ) {
+    return 'analysis';
+  }
+  return 'other';
+}
+
+// ---------------------------------------------------------------------------
 // Object-to-interface builders
 // ---------------------------------------------------------------------------
 
@@ -153,6 +229,11 @@ function toExtractedSkill(obj: Record<string, unknown>, source: string): Extract
     if (valid.includes(obj.category as SkillCategory)) {
       category = obj.category as SkillCategory;
     }
+  }
+
+  // If category is 'other' and path matches CC skill pattern, infer from directory
+  if (category === 'other' && isClaudeCodeSkillPath(source)) {
+    category = inferClaudeCodeSkillCategory(source);
   }
 
   return {
@@ -528,6 +609,25 @@ function extractFromMarkdown(
     }
     if (isSkillObject(fm)) {
       skills.push(toExtractedSkill(fm as Record<string, unknown>, source));
+    }
+  }
+
+  // CC format fallback (skill checked first - mutual exclusion)
+  if (fm && typeof fm === 'object' && !Array.isArray(fm)) {
+    const fmObj = fm as Record<string, unknown>;
+    const bodyAfterFM = content.slice(frontmatterMatch[0].length).trim();
+
+    if (isClaudeCodeSkill(fmObj, source)) {
+      const skill = toExtractedSkill(fmObj, source);
+      if (bodyAfterFM && !skill.inputSchema) {
+        skill.inputSchema = { description: bodyAfterFM };
+      }
+      skills.push(skill);
+    } else if (isClaudeCodeAgent(fmObj, source)) {
+      const agent = toExtractedAgent(fmObj, source);
+      agent.systemPrompt = bodyAfterFM; // Use body as systemPrompt
+      agent.availableSkills = []; // CC tools are NOT DynFlow skills
+      agents.push(agent);
     }
   }
 

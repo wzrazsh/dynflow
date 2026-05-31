@@ -53,6 +53,10 @@ export interface AgentRun {
   completedAt?: string;
   model?: string;
   timeoutMs?: number;
+  files?: string[];
+  fileCount?: number;
+  totalSize?: number;
+  outputDir?: string;
 }
 
 // Status enums as string unions
@@ -186,4 +190,40 @@ export interface CloneWorkflowRequest {
 
 export interface ImportTemplateRequest {
   content: string;
+}
+
+// Project management types
+export interface ProjectMeta {
+  projectName: string;
+  currentVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDetail {
+  projectName: string;
+  versions: VersionMeta[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VersionMeta {
+  version: number;
+  status: 'running' | 'completed' | 'failed';
+  fileCount: number;
+  totalSize: number;
+  files: string[];
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+}
+
+export interface RunResponse {
+  version: number;
+  status: string;
+}
+
+export interface FileReadResponse {
+  content: string;
+  mimeType: string;
 }

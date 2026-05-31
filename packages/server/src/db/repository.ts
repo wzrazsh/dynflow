@@ -261,7 +261,15 @@ export function createAgentRuns(
 export function updateAgentStatus(
   id: string,
   status: AgentStatus,
-  opts?: { output?: string; error?: string; containerId?: string },
+  opts?: {
+    output?: string;
+    error?: string;
+    containerId?: string;
+    files?: string[];
+    fileCount?: number;
+    totalSize?: number;
+    outputDir?: string;
+  },
 ): void {
   const db = getDb();
   const now = new Date().toISOString();
@@ -281,10 +289,29 @@ export function updateAgentStatus(
     values.push(now);
   }
 
-  if (opts?.output !== undefined) {
+  // When actual file metadata is present, store both output text and file
+  // info as a single JSON object in the `output` column.
+  // Only triggers for non-empty file arrays or positive counts (empty arrays
+  // or zero counts from runners that always set the field are treated as
+  // "no files" to preserve backward compatibility with existing DB consumers).
+  const hasFiles =
+    (opts?.files !== undefined && opts.files.length > 0) ||
+    (opts?.fileCount !== undefined && opts.fileCount > 0) ||
+    (opts?.totalSize !== undefined && opts.totalSize > 0);
+  if (hasFiles) {
+    const outputPayload: Record<string, unknown> = {};
+    if (opts?.output !== undefined) outputPayload.text = opts.output;
+    if (opts?.files !== undefined) outputPayload.files = opts.files;
+    if (opts?.fileCount !== undefined) outputPayload.fileCount = opts.fileCount;
+    if (opts?.totalSize !== undefined) outputPayload.totalSize = opts.totalSize;
+    if (opts?.outputDir !== undefined) outputPayload.outputDir = opts.outputDir;
+    setClauses.push('output = ?');
+    values.push(JSON.stringify(outputPayload));
+  } else if (opts?.output !== undefined) {
     setClauses.push('output = ?');
     values.push(opts.output);
   }
+
   if (opts?.error !== undefined) {
     setClauses.push('error = ?');
     values.push(opts.error);

@@ -12,9 +12,11 @@ import TemplateForm from './components/TemplateForm';
 import TemplateVersionHistory from './components/TemplateVersionHistory';
 import ImportExport from './components/ImportExport';
 import MetaWorkflow from './components/MetaWorkflow';
+import ProjectList from './components/ProjectList';
+import ProjectDetail from './components/ProjectDetail';
 import type { WorkflowTemplate } from '@dynflow/shared';
 
-type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta';
+type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta' | 'projects' | 'project-detail';
 
 export default function App() {
   const [view, setView] = useState<View>('list');
@@ -27,6 +29,7 @@ export default function App() {
   const [templateListKey, setTemplateListKey] = useState(0);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
+  const [selectedProjectName, setSelectedProjectName] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     type: 'error' | 'info' | 'success';
@@ -128,6 +131,21 @@ export default function App() {
                 }}
               >
                 Import from GitHub
+              </button>
+              <button
+                onClick={() => setView('projects')}
+                style={{
+                  padding: '8px 20px',
+                  backgroundColor: '#0891b2',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Projects
               </button>
             </div>
             <WorkflowList
@@ -377,6 +395,41 @@ export default function App() {
         {view === 'meta' && (
           <MetaWorkflow
             onBack={() => setView('list')}
+            onError={showError}
+            onSuccess={showSuccess}
+          />
+        )}
+
+        {view === 'projects' && (
+          <>
+            <button
+              onClick={() => setView('list')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                padding: 0,
+                marginBottom: 16,
+                fontSize: '0.875rem',
+              }}
+            >
+              &larr; Back to list
+            </button>
+            <ProjectList
+              onSelect={(name) => {
+                setSelectedProjectName(name);
+                setView('project-detail');
+              }}
+              onError={showError}
+            />
+          </>
+        )}
+
+        {view === 'project-detail' && selectedProjectName && (
+          <ProjectDetail
+            projectName={selectedProjectName}
+            onBack={() => setView('projects')}
             onError={showError}
             onSuccess={showSuccess}
           />

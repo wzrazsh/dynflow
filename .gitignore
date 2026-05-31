@@ -43,6 +43,7 @@ Thumbs.db
 .sisyphus/
 .gstack/
 .omx/
+/outputs/
 
 # Error logs
 *.err

@@ -32,8 +32,13 @@ export class DockerAgentRunner implements AgentRunner {
         containerId: '',
       };
     }
+    let volumeArg = '';
+    if (config.outputDir) {
+      volumeArg = `--volume "${config.outputDir}:/app/output" `;
+    }
     const runCmd =
       `docker run --rm -d --memory=512m --cpus=1 --stop-timeout=10 --label dynflow=true ` +
+      volumeArg +
       `-e AGENT_PROMPT="${config.prompt.replace(/"/g, '\\"')}" ` +
       `-e AGENT_MODEL="${config.model}" ` +
       `-e AGENT_TIMEOUT_MS="${config.timeoutMs}" ` +
@@ -52,6 +57,10 @@ export class DockerAgentRunner implements AgentRunner {
       output: parsed.output,
       error: parsed.error,
       containerId: cid,
+      files: parsed.files,
+      fileCount: parsed.fileCount,
+      totalSize: parsed.totalSize,
+      outputDir: parsed.outputDir,
     };
   }
 

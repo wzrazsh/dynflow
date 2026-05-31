@@ -63,6 +63,10 @@ class ConcurrencyTrackingMock implements AgentRunner {
         success: false,
         error: '401 Unauthorized - Invalid API key',
         containerId: '',
+        files: [],
+        fileCount: 0,
+        totalSize: 0,
+        outputDir: '/app/output',
       };
     }
 
@@ -74,6 +78,10 @@ class ConcurrencyTrackingMock implements AgentRunner {
         success: false,
         error: '429 Too Many Requests - Rate limit exceeded',
         containerId: '',
+        files: [],
+        fileCount: 0,
+        totalSize: 0,
+        outputDir: '/app/output',
       };
     }
 
@@ -81,6 +89,10 @@ class ConcurrencyTrackingMock implements AgentRunner {
       success: true,
       output: `result for ${config.agentId}`,
       containerId: `ctr-${config.agentId}`,
+      files: [],
+      fileCount: 0,
+      totalSize: 0,
+      outputDir: '/app/output',
     };
   }
 

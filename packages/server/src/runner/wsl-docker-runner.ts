@@ -101,13 +101,19 @@ export class WslDockerAgentRunner implements AgentRunner {
       };
     }
 
-    // Create unique run ID for logging
+    // Determine output directory
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const runOutputDir = join(this.outputDir, runId);
+    let runOutputDir: string;
+    if (config.outputDir) {
+      runOutputDir = config.outputDir;
+    } else {
+      runOutputDir = join(this.outputDir, runId);
+    }
     mkdirSync(runOutputDir, { recursive: true });
 
     // Convert Windows path to WSL path for volume mounting
-    const wslOutputDir = runOutputDir.replace(/^([A-Z]):/, '/mnt/$1').replace(/\\/g, '/').toLowerCase();
+    // Only lowercase the drive letter, not the full path
+    const wslOutputDir = runOutputDir.replace(/^([A-Z]):/, (_, d) => '/mnt/' + d.toLowerCase()).replace(/\\/g, '/');
 
     // Escape the prompt for shell execution
     const escapedPrompt = config.prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n');
@@ -160,6 +166,10 @@ export class WslDockerAgentRunner implements AgentRunner {
         output: parsed.output,
         error: parsed.error,
         containerId: cid,
+        files: parsed.files,
+        fileCount: parsed.fileCount,
+        totalSize: parsed.totalSize,
+        outputDir: parsed.outputDir,
       };
     } catch (parseError) {
       return {

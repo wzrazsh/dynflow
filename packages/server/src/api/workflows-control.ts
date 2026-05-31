@@ -3,6 +3,8 @@ import * as repo from '../db/repository.js';
 import * as templateRepo from '../db/template-repository.js';
 import { WorkflowFSM } from '../workflow/state-machine.js';
 import { WorkflowRuntime } from '../workflow/runtime.js';
+import type { WorkflowExecuteOptions } from '../workflow/runtime.js';
+import { ProjectService } from '../project/project-service.js';
 import { createAgentRunner } from '../runner/index.js';
 import { StreamManager } from '../sse/stream-manager.js';
 import type { WorkflowStatus } from '@dynflow/shared';
@@ -13,6 +15,11 @@ const router = Router();
 // In-memory registry of active runtime instances (for stop/abort)
 // ---------------------------------------------------------------------------
 const activeRuntimes = new Map<string, WorkflowRuntime>();
+
+// ---------------------------------------------------------------------------
+// ProjectService singleton for output directory management
+// ---------------------------------------------------------------------------
+const projectService = new ProjectService();
 
 // ---------------------------------------------------------------------------
 // GET /:id — Retrieve a workflow run
@@ -52,14 +59,23 @@ router.post('/:id/start', (req, res) => {
   const runtime = new WorkflowRuntime(
     createAgentRunner(),
     StreamManager.getInstance(),
+    projectService,
   );
   activeRuntimes.set(req.params.id, runtime);
+
+  // Extract optional project context from the request body
+  // Use optional chaining to handle requests with no body/payload
+  const executeOpts: WorkflowExecuteOptions = {};
+  if (req.body?.projectName) executeOpts.projectName = req.body.projectName;
+  if (req.body?.version !== undefined) executeOpts.version = req.body.version;
+  if (req.body?.outputDir) executeOpts.outputDir = req.body.outputDir;
+  const optsToPass = Object.keys(executeOpts).length > 0 ? executeOpts : undefined;
 
   // Respond immediately, then start execution asynchronously
   res.json({ success: true, data: { status: 'running' } });
 
   setImmediate(() => {
-    runtime.execute(run.id, apiKey).catch((err: unknown) => {
+    runtime.execute(run.id, apiKey, optsToPass).catch((err: unknown) => {
       activeRuntimes.delete(run.id);
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
@@ -128,11 +144,20 @@ router.post('/:id/resume', (req, res) => {
   const runtime = new WorkflowRuntime(
     createAgentRunner(),
     StreamManager.getInstance(),
+    projectService,
   );
   activeRuntimes.set(run.id, runtime);
 
+  // Extract optional project context from the request body
+  // Use optional chaining to handle requests with no body/payload
+  const executeOpts: WorkflowExecuteOptions = {};
+  if (req.body?.projectName) executeOpts.projectName = req.body.projectName;
+  if (req.body?.version !== undefined) executeOpts.version = req.body.version;
+  if (req.body?.outputDir) executeOpts.outputDir = req.body.outputDir;
+  const optsToPass = Object.keys(executeOpts).length > 0 ? executeOpts : undefined;
+
   setImmediate(() => {
-    runtime.execute(run.id, apiKey).catch((err: unknown) => {
+    runtime.execute(run.id, apiKey, optsToPass).catch((err: unknown) => {
       activeRuntimes.delete(run.id);
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {

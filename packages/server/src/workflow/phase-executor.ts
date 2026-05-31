@@ -13,6 +13,10 @@ export interface AgentResult {
   error?: string;
   startedAt: string;
   completedAt: string;
+  files?: string[];
+  fileCount?: number;
+  totalSize?: number;
+  outputDir?: string;
 }
 
 export type PhaseStatus = 'completed' | 'completed_with_errors';
@@ -83,6 +87,7 @@ export class PhaseExecutor {
     agents: AgentRun[],
     apiKey: string,
     maxConcurrency: number = 16,
+    outputDir?: string,
   ): Promise<PhaseResult> {
     this.cancelled = false;
 
@@ -99,7 +104,7 @@ export class PhaseExecutor {
         if (this.cancelled) {
           return cancelledResult(agent);
         }
-        return this.runAgent(agent, apiKey);
+        return this.runAgent(agent, apiKey, outputDir);
       }),
     );
 
@@ -147,7 +152,7 @@ export class PhaseExecutor {
   // Private helpers
   // -----------------------------------------------------------------------
 
-  private async runAgent(agent: AgentRun, apiKey: string): Promise<AgentResult> {
+  private async runAgent(agent: AgentRun, apiKey: string, outputDir?: string): Promise<AgentResult> {
     const startedAt = new Date().toISOString();
     const maxRetries = 3;
 
@@ -159,6 +164,7 @@ export class PhaseExecutor {
           model: agent.model ?? 'gpt-4o',
           timeoutMs: agent.timeoutMs ?? 300_000,
           openaiApiKey: apiKey,
+          outputDir,
         };
         const result = await this.runner.run(config);
         const completedAt = new Date().toISOString();
@@ -173,6 +179,10 @@ export class PhaseExecutor {
             error: result.error,
             startedAt,
             completedAt,
+            files: result.files,
+            fileCount: result.fileCount,
+            totalSize: result.totalSize,
+            outputDir: result.outputDir,
           };
         }
 

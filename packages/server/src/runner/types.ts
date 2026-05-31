@@ -4,6 +4,7 @@ export interface AgentRunConfig {
   model: string;
   timeoutMs: number;
   openaiApiKey: string;
+  outputDir?: string;
 }
 
 export interface AgentResult {
@@ -11,6 +12,10 @@ export interface AgentResult {
   output?: string;
   error?: string;
   containerId: string;
+  files?: string[];
+  fileCount?: number;
+  totalSize?: number;
+  outputDir?: string;
 }
 
 export interface AgentRunner {

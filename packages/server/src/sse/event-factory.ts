@@ -88,13 +88,14 @@ export function createAgentCompletedEvent(
   agentId: string,
   agentName: string,
   output: string,
+  fileSummary?: { files?: string[]; fileCount?: number; totalSize?: number; outputDir?: string },
 ): SSEEvent {
   return {
     type: 'agent_completed',
     workflowId,
     phaseId,
     agentId,
-    data: { agentName, output },
+    data: { agentName, output, ...(fileSummary ? { fileSummary } : {}) },
     timestamp: ts(),
   };
 }

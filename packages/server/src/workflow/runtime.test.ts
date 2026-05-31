@@ -88,6 +88,10 @@ class MockAgentRunner implements AgentRunner {
         success: false,
         error: override.error ?? 'Simulated failure',
         containerId: `ctr-${config.agentId}`,
+        files: [],
+        fileCount: 0,
+        totalSize: 0,
+        outputDir: '/app/output',
       };
     }
 
@@ -100,6 +104,10 @@ class MockAgentRunner implements AgentRunner {
       success: true,
       output,
       containerId: `ctr-${config.agentId}`,
+      files: [],
+      fileCount: 0,
+      totalSize: 0,
+      outputDir: '/app/output',
     };
   }
 

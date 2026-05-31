@@ -132,3 +132,58 @@ export interface ValidationError {
   message: string;
   code: string;
 }
+
+// Workflow Template types
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  script: string;
+  currentVersion: number;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowTemplateVersion {
+  id: string;
+  templateId: string;
+  version: number;
+  script: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+}
+
+export interface CreateTemplateRequest {
+  name: string;
+  description?: string;
+  script: string;
+  tags?: string[];
+}
+
+export interface UpdateTemplateRequest {
+  name?: string;
+  description?: string;
+  script?: string;
+  tags?: string[];
+}
+
+export interface CompareVersionsRequest {
+  from: number;
+  to: number;
+}
+
+export interface RollbackVersionRequest {
+  version: number;
+}
+
+export interface CloneWorkflowRequest {
+  name: string;
+  description?: string;
+  tags?: string[];
+}
+
+export interface ImportTemplateRequest {
+  content: string;
+}

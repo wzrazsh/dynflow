@@ -95,5 +95,34 @@ export function initSchema(): void {
       skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
       PRIMARY KEY (agent_id, skill_id)
     );
+
+    -- Workflow Template tables
+    CREATE TABLE IF NOT EXISTS workflow_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      script TEXT NOT NULL,
+      current_version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_template_versions (
+      id TEXT PRIMARY KEY,
+      template_id TEXT NOT NULL REFERENCES workflow_templates(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      script TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(template_id, version)
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_template_tags (
+      id TEXT PRIMARY KEY,
+      template_id TEXT NOT NULL REFERENCES workflow_templates(id) ON DELETE CASCADE,
+      tag TEXT NOT NULL,
+      UNIQUE(template_id, tag)
+    );
   `);
 }

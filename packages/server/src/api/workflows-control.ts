@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as repo from '../db/repository.js';
+import * as templateRepo from '../db/template-repository.js';
 import { WorkflowFSM } from '../workflow/state-machine.js';
 import { WorkflowRuntime } from '../workflow/runtime.js';
 import { createAgentRunner } from '../runner/index.js';
@@ -172,5 +173,67 @@ router.post('/:id/stop', (req, res) => {
 
   return res.json({ success: true, data: { status: 'stopped' } });
 });
+
+// ---------------------------------------------------------------------------
+// POST /:id/clone — Clone a completed workflow run into a new template
+// ---------------------------------------------------------------------------
+router.post('/:id/clone', (req, res) => {
+  const run = repo.getWorkflowRun(req.params.id);
+  if (!run) {
+    return res.status(404).json({ success: false, error: 'Workflow run not found' });
+  }
+
+  const { name, description, tags } = req.body;
+
+  // Validate name
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ success: false, error: 'Name is required' });
+  }
+
+  // Validate optional fields
+  if (description !== undefined && typeof description !== 'string') {
+    return res.status(400).json({ success: false, error: 'Description must be a string' });
+  }
+  if (tags !== undefined && (!Array.isArray(tags) || !tags.every((t: unknown) => typeof t === 'string'))) {
+    return res.status(400).json({ success: false, error: 'Tags must be an array of strings' });
+  }
+
+  // Construct a representative script from the workflow run's phases and agents
+  const scriptLines: string[] = ['function main() {'];
+  for (const phase of run.phases) {
+    scriptLines.push(`  phase('${escapeScriptString(phase.name)}', () => {`);
+    for (const agent of phase.agents) {
+      const prompt = agent.prompt ? `'${escapeScriptString(agent.prompt)}'` : '';
+      scriptLines.push(`    agent('${escapeScriptString(agent.name)}', ${prompt});`);
+    }
+    scriptLines.push('  });');
+  }
+  scriptLines.push('}');
+
+  try {
+    const template = templateRepo.createTemplate({
+      name: name.trim(),
+      description: description?.trim(),
+      script: scriptLines.join('\n'),
+      tags,
+    });
+
+    res.status(201).json({ success: true, data: template });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+/**
+ * Escape a string for use inside single quotes in a generated script.
+ * Replaces backslashes, single quotes, and newlines with safe equivalents.
+ */
+function escapeScriptString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r');
+}
 
 export default router;

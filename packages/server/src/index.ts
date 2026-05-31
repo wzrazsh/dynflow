@@ -10,16 +10,23 @@ dotenv.config({ path: join(__dirname, '../../.env') });
 import { createApp, errorHandler } from './app.js'
 import { isDockerAvailable, cleanupContainers } from './runner/index.js';
 import { initSchema } from './db/schema.js';
+import { runMigrations, getMigrationStatus } from './db/migrations.js';
 
 const port = process.env.PORT || 3001
 const app = createApp()
 
 // ---------------------------------------------------------------------------
-// Initialize database tables
+// Initialize database tables & run pending migrations
 // ---------------------------------------------------------------------------
 
 initSchema();
 console.log('Database tables initialized');
+
+runMigrations();
+const statuses = getMigrationStatus();
+const applied = statuses.filter((s) => s.applied).length;
+const pending = statuses.filter((s) => !s.applied).length;
+console.log(`Migrations: ${applied} applied, ${pending} pending`);
 
 // ---------------------------------------------------------------------------
 // Startup checks & cleanup

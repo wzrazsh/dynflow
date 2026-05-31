@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>MathQuest - Math Adventure!</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#4A90D9;--green:#45C48A;--orange:#FF8C42;--purple:#9B59B6;
+  --red:#E74C3C;--gold:#F1C40F;--pink:#FF6B9D;--teal:#1ABC9C;
+  --bg:#E8F4FD;--card:#FFFFFF;--text:#2C3E50;--text-light:#7F8C8D;
+  --shadow:0 8px 32px rgba(0,0,0,0.12);--radius:20px;
+  --radius-sm:12px;--transition:all 0.3s cubic-bezier(0.4,0,0.2,1)
+}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+  background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;
+  min-height:100vh;margin:0;padding:16px;font-size:16px;line-height:1.5;
+  background-image:radial-gradient(circle at 10% 20%,rgba(74,144,217,0.08) 0%,transparent 50%),
+    radial-gradient(circle at 90% 80%,rgba(69,196,138,0.08) 0%,transparent 50%);
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent
+}
+#app{width:100%;max-width:520px;height:100%;max-height:820px;position:relative;overflow:hidden}
+.screen{display:none;flex-direction:column;align-items:center;justify-content:center;
+  width:100%;height:100%;padding:20px;position:absolute;top:0;left:0;
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  animation:fadeSlideIn 0.4s ease-out;animation-fill-mode:both;
+  overflow-y:auto;-webkit-overflow-scrolling:touch
+}
+.screen.active{display:flex}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes bounce{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.05);opacity:0.85}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+@keyframes confettiFall{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(400px) rotate(720deg);opacity:0}}
+@keyframes starPop{0%{transform:scale(0) rotate(-180deg);opacity:0}60%{transform:scale(1.3) rotate(10deg)}100%{transform:scale(1) rotate(0deg);opacity:1}}
+@keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOutRight{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}
+@keyframes heartBeat{0%,100%{transform:scale(1)}15%{transform:scale(1.15)}30%{transform:scale(1)}45%{transform:scale(1.1)}}
+@keyframes timerPulse{0%,100%{width:100%}50%{width:48%}}
+@keyframes glow{0%,100%{box-shadow:0 0 5px rgba(241,196,15,0.4)}50%{box-shadow:0 0 20px rgba(241,196,15,0.8)}}
+
+/* Main Menu */
+#menu .logo{font-size:56px;font-weight:900;background:linear-gradient(135deg,var(--blue),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:4px;letter-spacing:-1px;line-height:1.1}
+#menu .subtitle{font-size:18px;color:var(--text-light);margin-bottom:32px;font-weight:500}
+.menu-buttons{display:flex;flex-direction:column;gap:14px;width:100%;max-width:280px}
+.btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px 28px;
+  border:none;border-radius:var(--radius-sm);font-size:18px;font-weight:700;cursor:pointer;
+  transition:var(--transition);color:#fff;text-decoration:none;position:relative;overflow:hidden}
+.btn:active{transform:scale(0.96)}
+.btn-primary{background:linear-gradient(135deg,var(--blue),#357ABD)}
+.btn-primary:hover{box-shadow:0 6px 20px rgba(74,144,217,0.45);transform:translateY(-2px)}
+.btn-success{background:linear-gradient(135deg,var(--green),#36A87E)}
+.btn-success:hover{box-shadow:0 6px 20px rgba(69,196,138,0.45);transform:translateY(-2px)}
+.btn-warning{background:linear-gradient(135deg,var(--orange),#E67E22)}
+.btn-warning:hover{box-shadow:0 6px 20px rgba(255,140,66,0.45);transform:translateY(-2px)}
+.btn-purple{background:linear-gradient(135deg,var(--purple),#8E44AD)}
+.btn-purple:hover{box-shadow:0 6px 20px rgba(155,89,182,0.45);transform:translateY(-2px)}
+.btn-danger{background:linear-gradient(135deg,var(--red),#C0392B)}
+.btn-danger:hover{box-shadow:0 6px 20px rgba(231,76,60,0.45);transform:translateY(-2px)}
+.btn-gold{background:linear-gradient(135deg,var(--gold),#F39C12);color:#2C3E50}
+.btn-gold:hover{box-shadow:0 6px 20px rgba(241,196,15,0.45);transform:translateY(-2px)}
+.btn-small{padding:10px 18px;font-size:14px;border-radius:10px}
+.btn-icon{width:44px;height:44px;padding:0;border-radius:50%;font-size:20px}
+
+/* Game Screen */
+#game{justify-content:flex-start;padding-top:16px}
+.game-header{display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:8px;gap:8px}
+.game-level{font-size:14px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:0.5px}
+.game-score{font-size:22px;font-weight:800;color:var(--gold);display:flex;align-items:center;gap:4px}
+.game-score span{font-size:16px;color:var(--text-light);font-weight:600}
+.lives{display:flex;gap:4px;font-size:22px}
+.lives .heart{transition:var(--transition)}
+.lives .heart.lost{opacity:0.2;transform:scale(0.8);filter:grayscale(1)}
+.timer-wrap{width:100%;height:8px;background:#E8E8E8;border-radius:4px;overflow:hidden;margin:8px 0 16px}
+.timer-bar{height:100%;border-radius:4px;transition:width 0.3s linear,background 0.3s;width:100%;
+  background:linear-gradient(90deg,var(--green),#2ECC71)}
+.timer-bar.warning{background:linear-gradient(90deg,var(--orange),#E67E22)}
+.timer-bar.danger{background:linear-gradient(90deg,var(--red),#E74C3C);animation:timerPulse 0.8s infinite}
+.question-area{width:100%;text-align:center;margin-bottom:16px}
+.question-label{font-size:13px;color:var(--text-light);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.question-text{font-size:22px;font-weight:700;color:var(--text);padding:12px 16px;
+  background:#F8FAFB;border-radius:var(--radius-sm);line-height:1.4;
+  border:2px dashed #E0E6ED}
+.answer-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-bottom:12px}
+.answer-btn{display:flex;align-items:center;gap:10px;padding:14px 16px;border:3px solid #E8EDF2;
+  border-radius:var(--radius-sm);background:#FAFBFC;cursor:pointer;
+  font-size:17px;font-weight:700;transition:var(--transition);text-align:left;color:var(--text)}
+.answer-btn:hover:not(:disabled){border-color:var(--blue);background:#EBF4FF;transform:translateY(-2px)}
+.answer-btn:active:not(:disabled){transform:scale(0.97)}
+.answer-btn .letter{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;background:var(--blue);color:#fff;font-size:14px;font-weight:800;flex-shrink:0}
+.answer-btn.correct{border-color:var(--green);background:#E8F8F0;animation:pulse 0.4s}
+.answer-btn.correct .letter{background:var(--green)}
+.answer-btn.wrong{border-color:var(--red);background:#FDEDEC;animation:shake 0.4s}
+.answer-btn.wrong .letter{background:var(--red)}
+.answer-btn:disabled{cursor:default;opacity:0.7}
+.game-footer{display:flex;gap:10px;width:100%;margin-top:auto;padding-top:8px}
+.game-footer .btn{flex:1;font-size:15px;padding:12px}
+
+/* Helper Panel */
+.helper-overlay{display:none;position:absolute;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.35);z-index:10;animation:fadeSlideIn 0.2s}
+.helper-overlay.show{display:block}
+.helper-panel{position:absolute;top:0;right:0;width:85%;max-width:380px;height:100%;
+  background:#fff;box-shadow:-8px 0 30px rgba(0,0,0,0.15);z-index:11;padding:20px;
+  overflow-y:auto;animation:slideInRight 0.35s ease-out;display:flex;flex-direction:column}
+.helper-panel.hiding{animation:slideOutRight 0.3s ease-in forwards}
+.helper-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.helper-header h3{font-size:20px;font-weight:800;color:var(--purple)}
+.helper-close{width:36px;height:36px;border-radius:50%;border:none;background:#F0F0F0;
+  font-size:20px;cursor:pointer;transition:var(--transition);display:flex;align-items:center;justify-content:center}
+.helper-close:hover{background:#E0E0E0}
+.hint-levels{display:flex;flex-direction:column;gap:12px;flex:1}
+.hint-btn{padding:14px 18px;border:2px solid #E8EDF2;border-radius:var(--radius-sm);
+  background:#FAFBFC;cursor:pointer;text-align:left;transition:var(--transition)}
+.hint-btn:hover{border-color:var(--purple);background:#F5EEF9}
+.hint-btn .hint-title{font-weight:700;font-size:15px;color:var(--purple);margin-bottom:4px}
+.hint-btn .hint-desc{font-size:13px;color:var(--text-light)}
+.hint-btn.revealed{border-color:var(--purple);background:#F5EEF9}
+.hint-content{padding:14px 16px;background:#F8F4FC;border-radius:var(--radius-sm);
+  border-left:4px solid var(--purple);font-size:14px;line-height:1.6;color:var(--text);margin-top:-4px;animation:fadeSlideIn 0.3s}
+
+/* Level Complete */
+#levelComplete .complete-icon{font-size:64px;margin-bottom:8px;animation:heartBeat 1s infinite}
+#levelComplete .complete-title{font-size:28px;font-weight:800;margin-bottom:4px}
+#levelComplete .complete-sub{color:var(--text-light);font-size:16px;margin-bottom:16px}
+.stars{display:flex;gap:8px;font-size:48px;margin-bottom:16px}
+.stars .star{opacity:0;animation:starPop 0.5s ease-out forwards;display:inline-block}
+.stars .star.empty{opacity:0.2;filter:grayscale(1);animation:none}
+.score-breakdown{background:#F8FAFB;border-radius:var(--radius-sm);padding:14px 20px;width:100%;margin-bottom:16px}
+.score-row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+.score-row.total{font-weight:800;font-size:16px;border-top:2px solid #E8EDF2;padding-top:8px;margin-top:4px;color:var(--gold)}
+
+/* Game Over */
+#gameOver .go-icon{font-size:64px;margin-bottom:8px}
+#gameOver .go-title{font-size:28px;font-weight:800;margin-bottom:4px;color:var(--red)}
+#gameOver .go-sub{color:var(--text-light);font-size:16px;margin-bottom:20px}
+.go-stats{background:#F8FAFB;border-radius:var(--radius-sm);padding:14px 20px;width:100%;margin-bottom:20px}
+.go-stat{display:flex;justify-content:space-between;padding:6px 0;font-size:15px}
+.go-stat:not(:last-child){border-bottom:1px solid #EDF2F7}
+
+/* Level Map */
+#levelMap .map-title{font-size:28px;font-weight:800;margin-bottom:20px;color:var(--blue)}
+.level-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;width:100%;margin-bottom:20px}
+.level-cell{aspect-ratio:1;border-radius:var(--radius-sm);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-weight:700;font-size:16px;cursor:pointer;
+  transition:var(--transition);position:relative;border:3px solid #E8EDF2;background:#FAFBFC}
+.level-cell.locked{opacity:0.4;cursor:not-allowed;background:#F0F2F4}
+.level-cell.locked::after{content:'🔒';font-size:24px}
+.level-cell.current{border-color:var(--blue);background:#EBF4FF;animation:pulse 1.5s infinite}
+.level-cell.completed{border-color:var(--gold);background:#FFF9E6}
+.level-cell .lv-num{font-size:28px;font-weight:900}
+.level-cell .lv-stars{font-size:12px;margin-top:2px}
+.level-cell.completed .lv-stars{color:var(--gold)}
+
+/* Progress */
+#progress .prog-title{font-size:28px;font-weight:800;margin-bottom:20px;color:var(--green)}
+.prog-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;margin-bottom:20px}
+.prog-card{background:#F8FAFB;border-radius:var(--radius-sm);padding:16px;text-align:center}
+.prog-card .val{font-size:28px;font-weight:900;color:var(--blue);margin-bottom:2px}
+.prog-card .lbl{font-size:13px;color:var(--text-light);font-weight:600}
+.level-prog-list{width:100%}
+.level-prog-item{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
+  background:#F8FAFB;border-radius:10px;margin-bottom:6px;font-size:14px}
+.level-prog-item .lp-name{font-weight:600}
+.level-prog-item .lp-stars{color:var(--gold)}
+
+/* How to Play */
+#howToPlay .htp-title{font-size:28px;font-weight:800;margin-bottom:16px;color:var(--orange)}
+.htp-content{padding:0 4px;width:100%}
+.htp-step{display:flex;gap:14px;margin-bottom:16px;align-items:flex-start}
+.htp-step .htp-num{width:32px;height:32px;border-radius:50%;background:var(--orange);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;flex-shrink:0;margin-top:2px}
+.htp-step .htp-text{font-size:14px;line-height:1.5;color:var(--text)}
+.htp-tip{background:#FFF9E6;border-radius:var(--radius-sm);padding:12px 16px;font-size:14px;margin:16px 0;
+  border-left:4px solid var(--gold);line-height:1.5}
+
+/* Confetti */
+.confetti-container{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;overflow:hidden}
+.confetti-piece{position:absolute;top:-10px;width:10px;height:10px;border-radius:2px;animation:confettiFall 2.5s ease-in forwards}
+.confetti-piece:nth-child(odd){width:8px;height:8px;border-radius:50%}
+
+/* Back button */
+.back-btn{position:absolute;top:16px;left:16px;z-index:2;width:36px;height:36px;border-radius:50%;
+  border:2px solid #E0E6ED;background:#fff;font-size:18px;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;transition:var(--transition);color:var(--text)}
+.back-btn:hover{background:#F0F0F0;border-color:#CCC}
+
+/* Responsive */
+@media(max-width:480px){
+  body{padding:8px}
+  #app{max-width:100%;max-height:100%}
+  .screen{padding:16px;border-radius:16px}
+  .answer-grid{gap:8px}
+  .answer-btn{padding:12px 14px;font-size:15px}
+  .question-text{font-size:19px;padding:10px 14px}
+  #menu .logo{font-size:44px}
+  .game-score{font-size:18px}
+  .stars{font-size:38px}
+}
+@media(min-width:768px){
+  .answer-btn:hover{border-color:var(--blue);background:#EBF4FF;transform:translateY(-2px)}
+}
+
+/* Streak indicator */
+.streak-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;
+  background:#FFF3CD;color:#856404;font-size:12px;font-weight:700;margin-left:6px}
+.streak-badge.fire{animation:heartBeat 0.6s infinite}
+
+/* Feedback overlay */
+.feedback{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:64px;z-index:15;pointer-events:none;animation:float 0.8s ease-out forwards;opacity:0}
+.feedback.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+<!-- MAIN MENU -->
+<div id="menu" class="screen active">
+  <div class="logo">MathQuest</div>
+  <div class="subtitle">🧮 A Math Adventure!</div>
+  <div class="menu-buttons">
+    <button class="btn btn-primary" onclick="startGame()">🚀 Start Game</button>
+    <button class="btn btn-warning" onclick="showLevelMap()">🗺️ Level Map</button>
+    <button class="btn btn-success" onclick="showProgress()">📊 View Progress</button>
+    <button class="btn btn-purple" onclick="showScreen('howToPlay')">📖 How to Play</button>
+  </div>
+  <div style="margin-top:auto;font-size:12px;color:var(--text-light);padding-top:12px">Grades 1–6 • 30 Questions</div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="game" class="screen">
+  <div class="game-header">
+    <div class="game-level" id="levelLabel">Grade 1</div>
+    <div class="lives" id="livesDisplay"></div>
+    <div class="game-score" id="scoreDisplay"><span>⭐</span><span id="scoreValue">0</span><span id="streakBadge" style="display:none"></span></div>
+  </div>
+  <div class="timer-wrap"><div class="timer-bar" id="timerBar"></div></div>
+  <div class="question-area">
+    <div class="question-label" id="questionNum">Question 1 of 5</div>
+    <div class="question-text" id="questionText">What is 3 + 5?</div>
+  </div>
+  <div class="answer-grid" id="answerGrid"></div>
+  <div class="game-footer">
+    <button class="btn btn-purple btn-small" onclick="toggleHelper()">💡 Help</button>
+    <button class="btn btn-danger btn-small" onclick="quitGame()">✕ Quit</button>
+  </div>
+</div>
+
+<!-- HELPER OVERLAY -->
+<div class="helper-overlay" id="helperOverlay" onclick="toggleHelper()"></div>
+<div class="helper-panel" id="helperPanel">
+  <div class="helper-header">
+    <h3>💡 AI Helper</h3>
+    <button class="helper-close" onclick="toggleHelper()">✕</button>
+  </div>
+  <div class="hint-levels" id="hintLevels"></div>
+</div>
+
+<!-- LEVEL COMPLETE -->
+<div id="levelComplete" class="screen">
+  <button class="back-btn" onclick="showMainMenu()">←</button>
+  <div class="complete-icon" id="completeIcon">🎉</div>
+  <div class="complete-title" id="completeTitle">Level Complete!</div>
+  <div class="complete-sub" id="completeSub">Great job!</div>
+  <div class="stars" id="starsDisplay"></div>
+  <div class="score-breakdown" id="scoreBreakdown"></div>
+  <button class="btn btn-primary" id="nextLevelBtn" onclick="nextLevel()">Next Level →</button>
+  <button class="btn btn-success btn-small" style="margin-top:10px" onclick="showMainMenu()">Back to Menu</button>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameOver" class="screen">
+  <button class="back-btn" onclick="showMainMenu()">←</button>
+  <div class="go-icon">💔</div>
+  <div class="go-title">Game Over</div>
+  <div class="go-sub">Don't give up! Practice makes perfect.</div>
+  <div class="go-stats" id="goStats"></div>
+  <button class="btn btn-danger" onclick="startGame()">🔄 Try Again</button>
+  <button class="btn btn-small" style="margin-top:10px;background:#F0F0F0;color:var(--text)" onclick="showMainMenu()">Back to Menu</button>
+</div>
+
+<!-- LEVEL MAP -->
+<div id="levelMap" class="screen">
+  <button class="back-btn" onclick="showMainMenu()">←</button>
+  <div class="map-title">🗺️ Level Map</div>
+  <div class="level-grid" id="levelGrid"></div>
+  <div style="font-size:13px;color:var(--text-light);text-align:center">
+    <span>🔒 Locked</span> &nbsp;·&nbsp; <span style="color:var(--blue)">✦ Current</span> &nbsp;·&nbsp; <span style="color:var(--gold)">★ Completed</span>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div id="progress" class="screen">
+  <button class="back-btn" onclick="showMainMenu()">←</button>
+  <div class="prog-title">📊 Progress</div>
+  <div class="prog-cards" id="progCards"></div>
+  <div class="level-prog-list" id="levelProgList"></div>
+</div>
+
+<!-- HOW TO PLAY -->
+<div id="howToPlay" class="screen">
+  <button class="back-btn" onclick="showMainMenu()">←</button>
+  <div class="htp-title">📖 How to Play</div>
+  <div class="htp-content">
+    <div class="htp-step"><div class="htp-num">1</div><div class="htp-text"><strong>Answer Questions</strong> — Each level has 5 math problems. Choose the correct answer from 4 choices.</div></div>
+    <div class="htp-step"><div class="htp-num">2</div><div class="htp-text"><strong>Beat the Timer</strong> — You have 30 seconds per question. Answer faster for bonus points!</div></div>
+    <div class="htp-step"><div class="htp-num">3</div><div class="htp-text"><strong>Build Streaks</strong> — Answer correctly in a row to earn streak bonuses (extra ×10 per streak!).</div></div>
+    <div class="htp-step"><div class="htp-num">4</div><div class="htp-text"><strong>Watch Your Lives</strong> — You have 3 hearts. Wrong answers cost 1 heart. Lose all hearts and it's game over!</div></div>
+    <div class="htp-step"><div class="htp-num">5</div><div class="htp-text"><strong>Earn Stars</strong> — Get ≥60% for 1★, ≥80% for 2★, 100% for 3★. Need 1★ to advance!</div></div>
+    <div class="htp-step"><div class="htp-num">6</div><div class="htp-text"><strong>Use the Helper</strong> — Stuck? Tap 💡 Help for hints at 3 levels: a nudge, an example, or the full solution.</div></div>
+    <div class="htp-tip">💡 Your progress is saved automatically. Come back anytime!</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ======================== DATA ========================
+const LEVELS=[
+  {name:"Grade 1",desc:"Basic Addition & Subtraction",color:"#4A90D9",
+    problems:[
+      {q:"What is 3 + 5?",o:["6","8","7","9"],c:1,
+        h:["Think about counting up from 3. How many fingers do you get?",
+          "If you have 3 apples and get 5 more, count them all up: 3 + 5 = ?",
+          "3 + 5 = 8. You can count: 3, 4, 5, 6, 7, 8."]},
+      {q:"What is 10 - 4?",o:["5","7","6","8"],c:2,
+        h:["Think about taking things away. Start with 10, remove 4. What's left?",
+          "If you have 10 candies and eat 4, how many are left? 10 - 4 = ?",
+          "10 - 4 = 6. Count backward: 10, 9, 8, 7, 6."]},
+      {q:"What is 2 + 8?",o:["9","12","8","10"],c:3,
+        h:["Think about making a ten! 2 + 8 is a 'make ten' fact.",
+          "If you have 2 cookies and your friend gives you 8 more, how many total?",
+          "2 + 8 = 10. It's a 'make ten' fact!"]},
+      {q:"What is 7 - 3?",o:["5","3","4","6"],c:2,
+        h:["Think about the difference between 7 and 3.",
+          "If there are 7 birds and 3 fly away, how many stay? 7 - 3 = ?",
+          "7 - 3 = 4. Count backward: 7, 6, 5, 4."]},
+      {q:"What is 4 + 6?",o:["8","9","11","10"],c:3,
+        h:["Another make-ten fact! 4 needs 6 to make 10.",
+          "You have 4 toy cars and get 6 more. How many cars do you have now?",
+          "4 + 6 = 10. Make ten!"]}
+    ]},
+  {name:"Grade 2",desc:"Multiplication Basics",color:"#45C48A",
+    problems:[
+      {q:"What is 3 × 4?",o:["7","15","10","12"],c:3,
+        h:["Think about 3 groups of 4. How many total?",
+          "If you have 3 bags with 4 apples in each, count: 4 + 4 + 4 = ?",
+          "3 × 4 = 12. Three groups of four equals twelve."]},
+      {q:"What is 5 × 6?",o:["25","30","35","28"],c:1,
+        h:["Skip count by 5 six times, or by 6 five times!",
+          "Think of an array: 5 rows of 6 chairs. How many chairs total?",
+          "5 × 6 = 30. Five groups of six is thirty."]},
+      {q:"What is 12 + 15?",o:["25","29","27","23"],c:2,
+        h:["Break it apart: 12 + 15 = (10+10) + (2+5). What do you get?",
+          "Add the tens: 10 + 10 = 20. Add the ones: 2 + 5 = 7. Then add them!",
+          "12 + 15 = 27. 10+10=20, 2+5=7, 20+7=27."]},
+      {q:"What is 20 - 8?",o:["11","14","12","13"],c:2,
+        h:["Think about how far 8 is from 20.",
+          "If you have $20 and spend $8, how much do you have left?",
+          "20 - 8 = 12. Count back: 20, 19, 18, 17, 16, 15, 14, 13, 12."]},
+      {q:"What is 4 × 7?",o:["21","24","30","28"],c:3,
+        h:["Think 4 groups of 7. What's 7 + 7 + 7 + 7?",
+          "There are 4 weeks in a month. How many days in 4 weeks? 7 days each.",
+          "4 × 7 = 28. Four weeks is 28 days."]}
+    ]},
+  {name:"Grade 3",desc:"Advanced Arithmetic",color:"#FF8C42",
+    problems:[
+      {q:"What is 45 + 37?",o:["72","82","92","78"],c:1,
+        h:["Add tens first, then ones. 45 + 37 = (40+30) + (5+7).",
+          "40+30=70, 5+7=12. Now add 70+12. What do you get?",
+          "45 + 37 = 82. 40+30=70, 5+7=12, 70+12=82."]},
+      {q:"What is 82 - 56?",o:["24","28","26","22"],c:2,
+        h:["Subtract the tens first: 82 - 50 = 32. Then subtract 6 more.",
+          "82 - 56. You can count up from 56 to 82: how many steps?",
+          "82 - 56 = 26. 82-50=32, 32-6=26."]},
+      {q:"What is 6 × 8?",o:["42","56","48","54"],c:2,
+        h:["Think of 6 groups of 8. Or use the 8 times table.",
+          "If you have 6 packs of 8 cookies, how many cookies in total?",
+          "6 × 8 = 48. Six eights are forty-eight."]},
+      {q:"What is 144 ÷ 12?",o:["14","10","13","12"],c:3,
+        h:["Think: what number times 12 equals 144?",
+          "If you split 144 candies among 12 friends, how many does each get?",
+          "144 ÷ 12 = 12. Because 12 × 12 = 144."]},
+      {q:"What is 3/4 + 1/4?",o:["1/4","1","4/8","3/8"],c:1,
+        h:["When denominators are the same, just add the numerators!",
+          "3/4 means 3 quarters. Add 1 more quarter. How many quarters total?",
+          "3/4 + 1/4 = 4/4 = 1 whole."]}
+    ]},
+  {name:"Grade 4",desc:"Fractions & Area",color:"#9B59B6",
+    problems:[
+      {q:"What is 2/3 + 1/3?",o:["1/3","3/6","1","3/3"],c:2,
+        h:["Same denominator again! Just add the top numbers.",
+          "2 thirds plus 1 third equals how many thirds?",
+          "2/3 + 1/3 = 3/3 = 1."]},
+      {q:"What is 5 × 12?",o:["55","72","60","65"],c:2,
+        h:["Break it apart: 5 × 12 = 5 × (10 + 2) = ?",
+          "5 groups of 12. 5 tens is 50, 5 twos is 10. Add them!",
+          "5 × 12 = 60. 5×10=50, 5×2=10, 50+10=60."]},
+      {q:"What is the area of a 6 × 4 rectangle?",o:["20","24","28","10"],c:1,
+        h:["Area of a rectangle = length × width. Multiply 6 × 4.",
+          "A rectangle that is 6 units wide and 4 units tall. Count the squares inside!",
+          "Area = 6 × 4 = 24 square units."]},
+      {q:"What is 96 ÷ 8?",o:["11","14","12","13"],c:2,
+        h:["Think: 8 × what = 96? Use your multiplication facts!",
+          "If 8 friends share 96 stickers equally, how many does each get?",
+          "96 ÷ 8 = 12. Because 8 × 12 = 96."]},
+      {q:"What is 7 × 9?",o:["56","63","72","54"],c:1,
+        h:["Use the trick: 7 × 10 = 70, minus 7 = ?",
+          "If you have 7 rows of 9 chairs, how many chairs total?",
+          "7 × 9 = 63. 7×10=70, 70-7=63."]}
+    ]},
+  {name:"Grade 5",desc:"Decimals & Percentages",color:"#1ABC9C",
+    problems:[
+      {q:"What is 3.5 + 2.7?",o:["6.2","5.2","6.1","5.12"],c:0,
+        h:["Add the whole numbers then the decimal parts. 3+2=5, .5+.7=1.2",
+          "3.5 + 2.7 = (3+2) + (0.5+0.7) = 5 + 1.2 = ?",
+          "3.5 + 2.7 = 6.2. Add tenths: 5+7=12 tenths = 1.2, plus 5 = 6.2."]},
+      {q:"What is 25% of 80?",o:["30","10","15","20"],c:3,
+        h:["25% means 1/4. So divide 80 by 4.",
+          "What is 80 ÷ 4? 25% is one quarter of the total.",
+          "25% of 80 = 20. 80 ÷ 4 = 20."]},
+      {q:"What is 15 - 8.3?",o:["7.7","6.7","7.3","6.3"],c:1,
+        h:["Think of 15 as 15.0. Subtract 8.3 = 15.0 - 8.0 - 0.3.",
+          "15 - 8 = 7, then subtract 0.3 more. What do you get?",
+          "15 - 8.3 = 6.7. 15.0 - 8.0 = 7.0, 7.0 - 0.3 = 6.7."]},
+      {q:"What is 6.4 ÷ 2?",o:["3.2","2.2","3.4","2.8"],c:0,
+        h:["Divide the whole part and decimal part separately.",
+          "6 ÷ 2 = 3, and 0.4 ÷ 2 = 0.2. Now add them.",
+          "6.4 ÷ 2 = 3.2. 6÷2=3, 0.4÷2=0.2, 3+0.2=3.2."]},
+      {q:"What is the ratio 3:5 as a fraction?",o:["3/8","5/3","3/5","5/8"],c:2,
+        h:["A ratio of 3:5 means 3 of one thing for every 5 of another.",
+          "In a ratio a:b, the fraction is a/b. So 3:5 = ?",
+          "The ratio 3:5 expressed as a fraction is 3/5."]}
+    ]},
+  {name:"Grade 6",desc:"Pre-Algebra",color:"#E74C3C",
+    problems:[
+      {q:"Solve: 2x + 3 = 11. What is x?",o:["3","5","4","6"],c:2,
+        h:["Think: 2x means 2 times some number. 2x + 3 = 11. Subtract 3 first!",
+          "If 2x + 3 = 11, then 2x = 11 - 3 = 8. What is x?",
+          "2x + 3 = 11 → 2x = 8 → x = 4."]},
+      {q:"What is 1/2 + 2/3?",o:["3/5","7/6","5/6","3/6"],c:1,
+        h:["Find a common denominator. 2 and 3 both divide into 6.",
+          "1/2 = 3/6, 2/3 = 4/6. Now add: 3/6 + 4/6 = ?",
+          "1/2 + 2/3 = 3/6 + 4/6 = 7/6 = 1 and 1/6."]},
+      {q:"Area of a triangle: base=6, height=4?",o:["24","20","10","12"],c:3,
+        h:["Area of triangle = (base × height) ÷ 2.",
+          "Multiply 6 × 4 = 24, then divide by 2. What do you get?",
+          "Area = (6 × 4) ÷ 2 = 24 ÷ 2 = 12 square units."]},
+      {q:"What is 3² + 4²?",o:["14","25","7","49"],c:1,
+        h:["3² means 3×3. 4² means 4×4. Add the results!",
+          "3² = 9, 4² = 16. What is 9 + 16?",
+          "3² + 4² = 9 + 16 = 25. (This is a 3-4-5 right triangle!)"]},
+      {q:"What is the mean of 2, 5, 8, 5?",o:["6","4","5","7"],c:2,
+        h:["Mean = add all numbers, then divide by how many numbers there are.",
+          "Add: 2+5+8+5 = 20. There are 4 numbers. 20 ÷ 4 = ?",
+          "Mean = (2+5+8+5)/4 = 20/4 = 5."]}
+    ]}
+];
+
+// ======================== STATE ========================
+const PAD={}
+let state={};
+function defaultState(){return{
+  currentLevel:0,questionIndex:0,lives:3,score:0,streak:0,
+  levelScores:Array(6).fill(-1),totalGames:0,bestScore:0,
+  totalCorrect:0,totalAttempted:0
+}}
+
+function loadProgress(){
+  try{
+    const d=localStorage.getItem('mathquest_progress');
+    if(d){const p=JSON.parse(d);return{...defaultState(),...p}}
+  }catch(e){}
+  return defaultState()
+}
+
+function saveProgress(){
+  try{localStorage.setItem('mathquest_progress',JSON.stringify(state))}catch(e){}
+}
+
+// ======================== AUDIO ========================
+let audioCtx=null;
+function getAudioCtx(){
+  if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return audioCtx
+}
+
+function playTone(freq,duration,type='sine',vol=0.3){
+  try{
+    const ctx=getAudioCtx(),osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.type=type;osc.frequency.value=freq;
+    gain.gain.setValueAtTime(vol,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+duration);
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+duration)
+  }catch(e){}
+}
+
+function playCorrect(){playTone(523,0.12);setTimeout(()=>playTone(659,0.12),100);setTimeout(()=>playTone(784,0.18),200)}
+function playWrong(){playTone(400,0.15,'sawtooth',0.15);setTimeout(()=>playTone(300,0.25,'sawtooth',0.15),150)}
+function playClick(){playTone(800,0.05,'sine',0.1)}
+function playVictory(){
+  [0,120,240,360,480].forEach((d,i)=>{
+    const notes=[523,659,784,1047,784];
+    setTimeout(()=>playTone(notes[i],0.2),d)
+  })
+}
+function playGameOver(){playTone(400,0.3,'sine',0.2);setTimeout(()=>playTone(350,0.3,'sine',0.2),250);setTimeout(()=>playTone(300,0.5,'sine',0.2),500)}
+function playBtnClick(){playClick()}
+
+// ======================== SCREENS ========================
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el=document.getElementById(id);
+  if(el)el.classList.add('active');
+  document.getElementById('helperOverlay').classList.remove('show');
+  document.getElementById('helperPanel').classList.remove('show','hiding')
+}
+
+function showMainMenu(){
+  playBtnClick();
+  state=loadProgress();
+  saveProgress();
+  showScreen('menu')
+}
+
+// ======================== GAME ========================
+let timerId=null,timerSeconds=30,answering=false,helperOpen=false;
+const LETTERS=['A','B','C','D'];
+
+function startGame(){
+  playBtnClick();
+  state=loadProgress();
+  if(state.lives<=0){
+    state.lives=3;state.score=0;state.streak=0;state.questionIndex=0;
+    state.totalCorrect=0;state.totalAttempted=0;state._bestStreak=0
+  }
+  if(state.currentLevel>=6)state.currentLevel=0;
+  state.totalGames++;
+  state._levelStartCorrect=state.totalCorrect;
+  state._levelStartAttempted=state.totalAttempted;
+  saveProgress();
+  showScreen('game');
+  loadQuestion()
+}
+
+function getCurrentProblems(){return LEVELS[state.currentLevel].problems}
+
+function loadQuestion(){
+  if(timerId){clearInterval(timerId);timerId=null}
+  // Initialize level tracking if mid-game reload
+  if(state._levelStartCorrect===undefined){state._levelStartCorrect=state.totalCorrect;state._levelStartAttempted=state.totalAttempted}
+  const probs=getCurrentProblems();
+  if(state.questionIndex>=probs.length){
+    levelComplete();return
+  }
+  if(state.lives<=0){
+    gameOver();return
+  }
+  
+  answering=false;
+  const prob=probs[state.questionIndex];
+  document.getElementById('levelLabel').textContent=LEVELS[state.currentLevel].name+' • '+(state.currentLevel+1)+'/6';
+  document.getElementById('questionNum').textContent='Question '+(state.questionIndex+1)+' of '+probs.length;
+  document.getElementById('questionText').textContent=prob.q;
+  document.getElementById('scoreValue').textContent=state.score;
+  updateLives();
+  updateStreakBadge();
+  
+  const grid=document.getElementById('answerGrid');
+  grid.innerHTML='';
+  prob.o.forEach((opt,i)=>{
+    const btn=document.createElement('button');
+    btn.className='answer-btn';
+    btn.innerHTML='<span class="letter">'+LETTERS[i]+'</span><span>'+opt+'</span>';
+    btn.addEventListener('click',()=>answerQuestion(i));
+    grid.appendChild(btn)
+  });
+  
+  timerSeconds=30;
+  updateTimerBar();
+  if(timerId)clearInterval(timerId);
+  timerId=setInterval(()=>{
+    timerSeconds--;
+    updateTimerBar();
+    if(timerSeconds<=0){
+      clearInterval(timerId);timerId=null;
+      if(!answering)timeUp()
+    }
+  },1000);
+  
+  // Reset helper
+  closeHelper();
+  document.getElementById('hintLevels').innerHTML='<div style="color:var(--text-light);font-size:14px;text-align:center;padding:20px 0">Select a hint level to get help with this problem.</div>'
+}
+
+function updateTimerBar(){
+  const bar=document.getElementById('timerBar');
+  const pct=Math.max(0,(timerSeconds/30)*100);
+  bar.style.width=pct+'%';
+  bar.classList.toggle('warning',timerSeconds<=10&&timerSeconds>5);
+  bar.classList.toggle('danger',timerSeconds<=5)
+}
+
+function updateStreakBadge(){
+  const el=document.getElementById('streakBadge');
+  if(state.streak>=2){
+    el.style.display='inline';
+    el.className='streak-badge'+(state.streak>=4?' fire':'');
+    el.textContent='🔥 x'+state.streak
+  }else{el.style.display='none'}
+}
+
+function updateLives(){
+  const d=document.getElementById('livesDisplay');
+  d.innerHTML='';
+  for(let i=0;i<3;i++){
+    const span=document.createElement('span');
+    span.textContent='❤️';
+    span.className='heart'+(i>=state.lives?' lost':'');
+    d.appendChild(span)
+  }
+}
+
+function answerQuestion(idx){
+  if(answering)return;
+  answering=true;
+  if(timerId){clearInterval(timerId);timerId=null}
+  
+  const probs=getCurrentProblems();
+  const prob=probs[state.questionIndex];
+  const btns=document.querySelectorAll('.answer-btn');
+  btns.forEach((b,i)=>{
+    b.disabled=true;
+    if(i===prob.c)b.classList.add('correct');
+    if(i===idx&&idx!==prob.c)b.classList.add('wrong')
+  });
+  
+  state.totalAttempted++;
+  if(idx===prob.c){
+    state.totalCorrect++;
+    state.streak++;
+    if(!state._bestStreak||state.streak>state._bestStreak)state._bestStreak=state.streak;
+    const timeBonus=Math.floor(timerSeconds*5);
+    const streakBonus=Math.max(0,(state.streak-1)*10);
+    const pts=100+timeBonus+streakBonus;
+    state.score+=pts;
+    playCorrect();
+    document.getElementById('scoreValue').textContent=state.score;
+    updateStreakBadge();
+    showFeedback('✅')
+  }else{
+    state.streak=0;
+    state.lives--;
+    playWrong();
+    showFeedback('❌');
+    updateLives();
+    updateStreakBadge()
+  }
+  saveProgress();
+  
+  setTimeout(()=>{
+    if(state.lives<=0){gameOver();return}
+    state.questionIndex++;
+    loadQuestion()
+  },1200)
+}
+
+function timeUp(){
+  if(answering)return;
+  answering=true;
+  const probs=getCurrentProblems();
+  const prob=probs[state.questionIndex];
+  const btns=document.querySelectorAll('.answer-btn');
+  btns.forEach((b,i)=>{
+    b.disabled=true;
+    if(i===prob.c)b.classList.add('correct')
+  });
+  state.streak=0;
+  state.lives--;
+  state.totalAttempted++;
+  playWrong();
+  showFeedback('⏰');
+  updateLives();
+  updateStreakBadge();
+  saveProgress();
+  setTimeout(()=>{
+    if(state.lives<=0){gameOver();return}
+    state.questionIndex++;
+    loadQuestion()
+  },1200)
+}
+
+function showFeedback(emoji){
+  const el=document.createElement('div');
+  el.className='feedback';
+  el.textContent=emoji;
+  document.getElementById('game').appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>el.remove(),800)
+}
+
+// ======================== LEVEL COMPLETE ========================
+function levelComplete(){
+  playVictory();
+  const probs=getCurrentProblems();
+  const total=probs.length;
+  
+  const startCor=(state._levelStartCorrect||0);
+  const startAtt=(state._levelStartAttempted||0);
+  const gainedCorrect=state.totalCorrect-startCor;
+  const gainedAttempted=state.totalAttempted-startAtt;
+  const levelPct=gainedAttempted>0?Math.round((gainedCorrect/gainedAttempted)*100):100;
+  
+  delete state._levelStartCorrect;
+  delete state._levelStartAttempted;
+  
+  let starCount=0;
+  if(levelPct>=100)starCount=3;
+  else if(levelPct>=80)starCount=2;
+  else if(levelPct>=60)starCount=1;
+  
+  if(starCount>=1&&state.currentLevel<6){
+    if(starCount>state.levelScores[state.currentLevel])
+      state.levelScores[state.currentLevel]=starCount
+  }
+  if(state.score>state.bestScore)state.bestScore=state.score;
+  saveProgress();
+  
+  showScreen('levelComplete');
+  document.getElementById('completeIcon').textContent=starCount>=3?'🏆':starCount>=2?'🎉':'🌟';
+  document.getElementById('completeTitle').textContent=starCount>=3?'Amazing!':starCount>=2?'Great Job!':'Good Try!';
+  document.getElementById('completeSub').textContent='Grade '+(state.currentLevel+1)+' Score: '+levelPct+'%';
+  
+  const starsEl=document.getElementById('starsDisplay');
+  starsEl.innerHTML='';
+  for(let i=0;i<3;i++){
+    const s=document.createElement('span');
+    s.className='star'+(i<starCount?'':' empty');
+    s.textContent='★';s.style.animationDelay=(i*0.25)+'s';
+    starsEl.appendChild(s)
+  }
+  
+  const bd=document.getElementById('scoreBreakdown');
+  bd.innerHTML=
+    '<div class="score-row"><span>Score</span><span>'+state.score+' pts</span></div>'+
+    '<div class="score-row"><span>Questions</span><span>'+gainedCorrect+'/'+gainedAttempted+' correct</span></div>'+
+    '<div class="score-row"><span>Accuracy</span><span>'+levelPct+'%</span></div>'+
+    '<div class="score-row total"><span>Stars</span><span>'+'★'.repeat(starCount)+'☆'.repeat(3-starCount)+'</span></div>';
+  
+  const nextBtn=document.getElementById('nextLevelBtn');
+  if(starCount>=1&&state.currentLevel<5){
+    nextBtn.style.display='flex';
+    nextBtn.textContent='Next Level →'
+  }else if(starCount>=1&&state.currentLevel===5){
+    nextBtn.style.display='flex';
+    nextBtn.textContent='🏆 You Beat the Game!'
+  }else{
+    nextBtn.style.display='flex';
+    nextBtn.textContent='🔄 Try Again'
+  }
+  
+  spawnConfetti()
+}
+
+function nextLevel(){
+  playBtnClick();
+  const hasStar=state.levelScores[state.currentLevel]>=1;
+  if(hasStar&&state.currentLevel<5){
+    state.currentLevel++;
+  }
+  // If no star or on last level, restart same level (retry)
+  state.questionIndex=0;
+  state._levelStartCorrect=state.totalCorrect;
+  state._levelStartAttempted=state.totalAttempted;
+  state.streak=0;
+  saveProgress();
+  showScreen('game');
+  loadQuestion()
+}
+
+// ======================== GAME OVER ========================
+function gameOver(){
+  playGameOver();
+  if(timerId){clearInterval(timerId);timerId=null}
+  if(state.score>state.bestScore)state.bestScore=state.score;
+  saveProgress();
+  
+  showScreen('gameOver');
+  const gs=document.getElementById('goStats');
+  const lvlPct=state.totalAttempted>0?Math.round((state.totalCorrect/state.totalAttempted)*100):0;
+  const bestStreak=state._bestStreak||0;
+  gs.innerHTML=
+    '<div class="go-stat"><span>Final Score</span><span style="font-weight:800;color:var(--gold)">'+state.score+'</span></div>'+
+    '<div class="go-stat"><span>Level Reached</span><span>Grade '+(state.currentLevel+1)+'</span></div>'+
+    '<div class="go-stat"><span>Questions</span><span>'+state.totalCorrect+'/'+state.totalAttempted+' correct</span></div>'+
+    '<div class="go-stat"><span>Accuracy</span><span>'+lvlPct+'%</span></div>'+
+    '<div class="go-stat"><span>Best Streak</span><span>'+bestStreak+'</span></div>'
+}
+
+// ======================== HELPER ========================
+function toggleHelper(){
+  const overlay=document.getElementById('helperOverlay');
+  const panel=document.getElementById('helperPanel');
+  if(helperOpen){
+    playBtnClick();
+    panel.classList.add('hiding');
+    setTimeout(()=>{
+      overlay.classList.remove('show');
+      panel.classList.remove('show','hiding');
+      helperOpen=false
+    },250)
+  }else{
+    playBtnClick();
+    overlay.classList.add('show');
+    panel.classList.add('show');
+    helperOpen=true;
+    buildHints()
+  }
+}
+
+function closeHelper(){
+  const overlay=document.getElementById('helperOverlay');
+  const panel=document.getElementById('helperPanel');
+  overlay.classList.remove('show');
+  panel.classList.remove('show','hiding');
+  helperOpen=false
+}
+
+function buildHints(){
+  if(!helperOpen||state.currentLevel>=6)return;
+  const probs=getCurrentProblems();
+  if(state.questionIndex>=probs.length)return;
+  const prob=probs[state.questionIndex];
+  const container=document.getElementById('hintLevels');
+  
+  const hints=[
+    {title:'🥚 Level 1 — Nudge',desc:'A gentle hint to point you in the right direction',content:prob.h[0]},
+    {title:'📝 Level 2 — Example',desc:'See a similar problem worked out',content:prob.h[1]},
+    {title:'🔓 Level 3 — Solution',desc:'The full step-by-step explanation',content:prob.h[2]}
+  ];
+  
+  container.innerHTML='';
+  hints.forEach((h,idx)=>{
+    const btn=document.createElement('div');
+    btn.className='hint-btn';
+    btn.innerHTML='<div class="hint-title">'+h.title+'</div><div class="hint-desc">'+h.desc+'</div>';
+    const content=document.createElement('div');
+    content.className='hint-content';
+    content.textContent=h.content;
+    content.style.display='none';
+    btn.addEventListener('click',()=>{
+      const wasOpen=content.style.display==='block';
+      container.querySelectorAll('.hint-content').forEach(c=>c.style.display='none');
+      container.querySelectorAll('.hint-btn').forEach(b=>b.classList.remove('revealed'));
+      if(!wasOpen){
+        content.style.display='block';
+        btn.classList.add('revealed');
+        playClick()
+      }
+    });
+    container.appendChild(btn);
+    container.appendChild(content)
+  })
+}
+
+// ======================== CONFETTI ========================
+function spawnConfetti(){
+  const container=document.createElement('div');
+  container.className='confetti-container';
+  const colors=['#F1C40F','#E74C3C','#3498DB','#2ECC71','#9B59B6','#FF6B9D','#FF8C42','#1ABC9C'];
+  for(let i=0;i<50;i++){
+    const piece=document.createElement('div');
+    piece.className='confetti-piece';
+    piece.style.left=Math.random()*100+'%';
+    piece.style.background=colors[Math.floor(Math.random()*colors.length)];
+    piece.style.animationDelay=(Math.random()*0.8)+'s';
+    piece.style.animationDuration=(2+Math.random()*1.5)+'s';
+    piece.style.width=(6+Math.random()*8)+'px';
+    piece.style.height=(6+Math.random()*8)+'px';
+    piece.style.borderRadius=Math.random()>0.5?'50%':'2px';
+    container.appendChild(piece)
+  }
+  document.getElementById('levelComplete').appendChild(container);
+  setTimeout(()=>container.remove(),4000)
+}
+
+// ======================== LEVEL MAP ========================
+function showLevelMap(){
+  playBtnClick();
+  showScreen('levelMap');
+  const grid=document.getElementById('levelGrid');
+  grid.innerHTML='';
+  const current=state.currentLevel;
+  for(let i=0;i<6;i++){
+    const cell=document.createElement('div');
+    cell.className='level-cell';
+    const stars=state.levelScores[i];
+    if(stars>=1){
+      cell.classList.add('completed');
+      cell.innerHTML='<div class="lv-num">'+(i+1)+'</div><div class="lv-stars">'+'★'.repeat(stars)+'</div>'
+    }else if(i<=current){
+      cell.classList.add('current');
+      cell.innerHTML='<div class="lv-num">'+(i+1)+'</div><div style="font-size:11px;color:var(--blue)">✦ Current</div>'
+    }else{
+      cell.classList.add('locked');
+      cell.innerHTML='<div class="lv-num">'+(i+1)+'</div>'
+    }
+    cell.addEventListener('click',()=>{
+      if(i<=current&&stars<0&&i!==current){
+        // Can replay completed levels or start current
+      }
+      playBtnClick()
+    });
+    grid.appendChild(cell)
+  }
+}
+
+// ======================== PROGRESS ========================
+function showProgress(){
+  playBtnClick();
+  showScreen('progress');
+  
+  const pct=state.totalAttempted>0?Math.round((state.totalCorrect/state.totalAttempted)*100):0;
+  const starsTotal=state.levelScores.reduce((a,b)=>a+Math.max(0,b),0);
+  const levelsCleared=state.levelScores.filter(s=>s>=1).length;
+  
+  document.getElementById('progCards').innerHTML=
+    '<div class="prog-card"><div class="val">'+state.totalGames+'</div><div class="lbl">Games Played</div></div>'+
+    '<div class="prog-card"><div class="val">'+state.bestScore+'</div><div class="lbl">Best Score</div></div>'+
+    '<div class="prog-card"><div class="val">'+levelsCleared+'/6</div><div class="lbl">Levels Done</div></div>'+
+    '<div class="prog-card"><div class="val">'+pct+'%</div><div class="lbl">Accuracy</div></div>';
+  
+  const list=document.getElementById('levelProgList');
+  list.innerHTML='<div style="font-weight:700;font-size:15px;margin-bottom:8px">Level Progress</div>';
+  LEVELS.forEach((l,i)=>{
+    const s=state.levelScores[i];
+    const item=document.createElement('div');
+    item.className='level-prog-item';
+    const starsStr=s>=0?'★'.repeat(s)+'☆'.repeat(3-s):'☆☆☆';
+    const color=s>=1?'var(--gold)':'var(--text-light)';
+    item.innerHTML='<span class="lp-name">'+l.name+'</span><span class="lp-stars" style="color:'+color+'">'+starsStr+'</span>';
+    list.appendChild(item)
+  })
+}
+
+// ======================== QUIT ========================
+function quitGame(){
+  playBtnClick();
+  if(timerId){clearInterval(timerId);timerId=null}
+  saveProgress();
+  showMainMenu()
+}
+
+// ======================== KEYBOARD ========================
+document.addEventListener('keydown',(e)=>{
+  const gameActive=document.getElementById('game').classList.contains('active');
+  if(!gameActive||answering)return;
+  const key=parseInt(e.key);
+  if(key>=1&&key<=4)answerQuestion(key-1)
+});
+
+// ======================== INIT ========================
+state=loadProgress();
+updateStreakBadge();
+
+// Auto-save on page leave
+window.addEventListener('beforeunload',()=>saveProgress());
+
+console.log('🧮 MathQuest loaded!');
+console.log('📊 Progress:',state);
+</script>
+
+</body>
+</html>

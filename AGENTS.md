@@ -204,6 +204,25 @@ DB_PATH=./data/workflows.db
 - SQLite has WAL mode for concurrent access
 - No authentication (single-user MVP)
 
+## Windows Background Process Management
+
+When starting long-running servers that should not block the terminal:
+
+```powershell
+# ✅ CORRECT: Use cmd.exe /c with file redirection
+Start-Process -FilePath "cmd.exe" `
+  -ArgumentList "/c", "cd /d <project-dir> && python -m http.server 8000 > server.log 2>&1" `
+  -WindowStyle Hidden
+
+# ❌ WRONG: Python http.server outputs access logs to stdout continuously.
+# Even with -WindowStyle Hidden, if UseShellExecute=$false or the process
+# inherits the console pipe, stdout output will BLOCK the PowerShell session.
+# This affects any process that continuously writes to stdout (python http.server,
+# node servers without log file, etc.)
+```
+
+**Key rule**: Always redirect stdout/stderr to a file with `> file.log 2>&1` when starting background processes that produce continuous output. Do NOT rely on `-WindowStyle Hidden` alone.
+
 ## Performance Considerations
 
 - Max 16 concurrent agents (configurable)

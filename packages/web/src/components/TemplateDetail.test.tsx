@@ -338,7 +338,7 @@ describe('TemplateDetail', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Run' }));
-    expect(post).toHaveBeenCalledWith('/api/templates/tpl-1/run', {});
+    expect(post).toHaveBeenCalledWith('/templates/tpl-1/run', {});
     expect(onSuccess).toHaveBeenCalledWith(
       'Template "Research Flow" executed successfully. Workflow run created.',
     );

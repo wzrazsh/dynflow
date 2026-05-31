@@ -18,7 +18,7 @@ export default function TemplateList({ selectedId, onSelect, onError }: Template
   const load = async () => {
     try {
       setLoading(true);
-      const res = await get<ApiResponse<WorkflowTemplate[]>>('/api/templates');
+      const res = await get<ApiResponse<WorkflowTemplate[]>>('/templates');
       setTemplates(res.data ?? []);
       setError(null);
     } catch (e) {

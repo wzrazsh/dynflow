@@ -269,7 +269,7 @@ export default function TemplateVersionHistory({
     try {
       setLoading(true);
       const res = await get<ApiResponse<WorkflowTemplateVersion[]>>(
-        `/api/templates/${templateId}/versions`,
+        `/templates/${templateId}/versions`,
       );
       if (res.success && res.data) {
         setVersions(res.data);
@@ -295,7 +295,7 @@ export default function TemplateVersionHistory({
     setDiffResult(null);
     try {
       const res = await get<ApiResponse<DiffResult>>(
-        `/api/templates/${templateId}/versions/compare?from=${compareFrom}&to=${compareTo}`,
+        `/templates/${templateId}/versions/compare?from=${compareFrom}&to=${compareTo}`,
       );
       if (res.success && res.data) {
         setDiffResult(res.data);

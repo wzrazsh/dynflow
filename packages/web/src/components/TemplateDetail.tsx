@@ -45,7 +45,7 @@ export default function TemplateDetail({
     try {
       setLoading(true);
       const res = await get<ApiResponse<WorkflowTemplate>>(
-        `/api/templates/${templateId}`,
+        `/templates/${templateId}`,
       );
       if (res.success && res.data) {
         setTemplate(res.data);
@@ -113,7 +113,7 @@ export default function TemplateDetail({
     setRunning(true);
     try {
       const res = await post<ApiResponse<{ id: string }>>(
-        `/api/templates/${template.id}/run`,
+        `/templates/${template.id}/run`,
         {}
       );
       if (res.success) {

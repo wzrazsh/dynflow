@@ -11,9 +11,10 @@ import TemplateDetail from './components/TemplateDetail';
 import TemplateForm from './components/TemplateForm';
 import TemplateVersionHistory from './components/TemplateVersionHistory';
 import ImportExport from './components/ImportExport';
+import MetaWorkflow from './components/MetaWorkflow';
 import type { WorkflowTemplate } from '@dynflow/shared';
 
-type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail';
+type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta';
 
 export default function App() {
   const [view, setView] = useState<View>('list');
@@ -112,6 +113,21 @@ export default function App() {
                 }}
               >
                 Templates
+              </button>
+              <button
+                onClick={() => setView('meta')}
+                style={{
+                  padding: '8px 20px',
+                  backgroundColor: '#8b5cf6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Import from GitHub
               </button>
             </div>
             <WorkflowList
@@ -330,7 +346,7 @@ export default function App() {
                   onRollback={async (v) => {
                     try {
                       const { post } = await import('./api/client.js');
-                      await post(`/api/templates/${selectedTemplateId}/rollback`, { version: v });
+                      await post(`/templates/${selectedTemplateId}/rollback`, { version: v });
                       showSuccess(`Rolled back to version ${v}`);
                       setShowVersionHistory(false);
                     } catch (e) {
@@ -356,6 +372,14 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+
+        {view === 'meta' && (
+          <MetaWorkflow
+            onBack={() => setView('list')}
+            onError={showError}
+            onSuccess={showSuccess}
+          />
         )}
 
         {showTemplateForm && (

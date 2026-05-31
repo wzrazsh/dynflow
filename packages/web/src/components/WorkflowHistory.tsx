@@ -154,7 +154,7 @@ export default function WorkflowHistory({
       setLoading(true);
       setApiMissing(false);
       const res = await get<ApiResponse<WorkflowRun[]>>(
-        `/api/templates/${templateId}/runs`,
+        `/templates/${templateId}/runs`,
       );
       if (res.success && res.data) {
         setRuns(res.data);

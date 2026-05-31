@@ -18,6 +18,8 @@ export interface PhaseDefinition {
 export interface AgentDefinition {
   name: string;
   prompt: string;
+  /** Reference to a predefined agent in the agent registry */
+  agentId?: string;
   model?: string;
   timeoutMs?: number;
 }

@@ -273,3 +273,303 @@ describe('withRetry', () => {
     expect(attempts).toBe(3); // initial + 2 retries
   });
 });
+
+// ---------------------------------------------------------------------------
+// Registry CRUD tests
+// ---------------------------------------------------------------------------
+
+describe('domain registry CRUD', () => {
+  it('11 — creates and retrieves a domain', () => {
+    const domain = repo.createDomain({ name: 'Code Analysis', description: 'Tools for analyzing code', icon: 'code' });
+    expect(domain.id).toBeDefined();
+    expect(domain.name).toBe('Code Analysis');
+    expect(domain.description).toBe('Tools for analyzing code');
+    expect(domain.icon).toBe('code');
+
+    const retrieved = repo.getDomain(domain.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.name).toBe('Code Analysis');
+  });
+
+  it('12 — returns undefined for non-existent domain', () => {
+    expect(repo.getDomain('nonexistent')).toBeUndefined();
+  });
+
+  it('13 — lists all domains', () => {
+    repo.createDomain({ name: 'Domain A', description: 'First' });
+    repo.createDomain({ name: 'Domain B', description: 'Second' });
+    const all = repo.getAllDomains();
+    expect(all).toHaveLength(2);
+    expect(all[0].name).toBe('Domain A');
+    expect(all[1].name).toBe('Domain B');
+  });
+
+  it('14 — deletes a domain', () => {
+    const domain = repo.createDomain({ name: 'Temp', description: 'Temporary' });
+    repo.deleteDomain(domain.id);
+    expect(repo.getDomain(domain.id)).toBeUndefined();
+  });
+
+  it('15 — skips icon when not provided', () => {
+    const domain = repo.createDomain({ name: 'No Icon', description: 'No icon test' });
+    expect(domain.icon).toBeUndefined();
+  });
+});
+
+describe('agent source CRUD', () => {
+  it('16 — creates and retrieves an agent source under a domain', () => {
+    const domain = repo.createDomain({ name: 'Web Dev', description: 'Web development tools' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'GitHub', url: 'https://github.com', description: 'GitHub trending' });
+
+    expect(source.id).toBeDefined();
+    expect(source.domainId).toBe(domain.id);
+    expect(source.name).toBe('GitHub');
+    expect(source.url).toBe('https://github.com');
+
+    const retrieved = repo.getAgentSource(source.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.name).toBe('GitHub');
+  });
+
+  it('17 — lists sources by domain', () => {
+    const domain = repo.createDomain({ name: 'Data', description: 'Data tools' });
+    repo.createAgentSource({ domainId: domain.id, name: 'Source B', url: 'https://b.com', description: 'B' });
+    repo.createAgentSource({ domainId: domain.id, name: 'Source A', url: 'https://a.com', description: 'A' });
+
+    const sources = repo.getSourcesByDomain(domain.id);
+    expect(sources).toHaveLength(2);
+    expect(sources[0].name).toBe('Source A'); // alphabetical order
+    expect(sources[1].name).toBe('Source B');
+  });
+
+  it('18 — deletes an agent source', () => {
+    const domain = repo.createDomain({ name: 'Temp', description: 'Temp' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'TempSrc', url: 'https://t', description: 'T' });
+    repo.deleteAgentSource(source.id);
+    expect(repo.getAgentSource(source.id)).toBeUndefined();
+  });
+});
+
+describe('agent role CRUD', () => {
+  it('19 — creates and retrieves an agent role', () => {
+    const domain = repo.createDomain({ name: 'D', description: 'D' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'S', url: 'https://s', description: 'S' });
+    const role = repo.createAgentRole({ sourceId: source.id, name: 'Reviewer', description: 'Code review role', tier: 1 });
+
+    expect(role.id).toBeDefined();
+    expect(role.sourceId).toBe(source.id);
+    expect(role.name).toBe('Reviewer');
+    expect(role.tier).toBe(1);
+
+    const retrieved = repo.getAgentRole(role.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.tier).toBe(1);
+  });
+
+  it('20 — defaults tier to 0', () => {
+    const domain = repo.createDomain({ name: 'D2', description: 'D2' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'S2', url: 'https://s2', description: 'S2' });
+    const role = repo.createAgentRole({ sourceId: source.id, name: 'Default', description: 'Default tier' });
+    expect(role.tier).toBe(0);
+  });
+
+  it('21 — lists roles ordered by tier then name', () => {
+    const domain = repo.createDomain({ name: 'D3', description: 'D3' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'S3', url: 'https://s3', description: 'S3' });
+    repo.createAgentRole({ sourceId: source.id, name: 'Low', description: 'Low', tier: 2 });
+    repo.createAgentRole({ sourceId: source.id, name: 'High', description: 'High', tier: 0 });
+    repo.createAgentRole({ sourceId: source.id, name: 'Mid', description: 'Mid', tier: 1 });
+
+    const roles = repo.getRolesBySource(source.id);
+    expect(roles).toHaveLength(3);
+    expect(roles[0].name).toBe('High');  // tier 0
+    expect(roles[1].name).toBe('Mid');   // tier 1
+    expect(roles[2].name).toBe('Low');   // tier 2
+  });
+
+  it('22 — deletes an agent role', () => {
+    const domain = repo.createDomain({ name: 'D4', description: 'D4' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'S4', url: 'https://s4', description: 'S4' });
+    const role = repo.createAgentRole({ sourceId: source.id, name: 'Del', description: 'Delete me' });
+    repo.deleteAgentRole(role.id);
+    expect(repo.getAgentRole(role.id)).toBeUndefined();
+  });
+});
+
+describe('predefined agent CRUD', () => {
+  function setupRole() {
+    const domain = repo.createDomain({ name: 'AgentD', description: 'Agent domain' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'AgentS', url: 'https://as', description: 'Agent source' });
+    const role = repo.createAgentRole({ sourceId: source.id, name: 'AgentR', description: 'Agent role' });
+    return { domain, source, role };
+  }
+
+  it('23 — creates and retrieves a predefined agent', () => {
+    const { role } = setupRole();
+    const agent = repo.createPredefinedAgent({
+      roleId: role.id,
+      name: 'Code Reviewer',
+      description: 'Reviews code changes',
+      systemPrompt: 'You are a code reviewer.',
+      availableSkills: ['skill-1', 'skill-2'],
+    });
+
+    expect(agent.id).toBeDefined();
+    expect(agent.roleId).toBe(role.id);
+    expect(agent.name).toBe('Code Reviewer');
+    expect(agent.systemPrompt).toBe('You are a code reviewer.');
+    expect(agent.availableSkills).toEqual(['skill-1', 'skill-2']);
+
+    const retrieved = repo.getPredefinedAgent(agent.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.availableSkills).toEqual(['skill-1', 'skill-2']);
+  });
+
+  it('24 — defaults availableSkills to empty array', () => {
+    const { role } = setupRole();
+    const agent = repo.createPredefinedAgent({
+      roleId: role.id,
+      name: 'Minimal',
+      description: 'Minimal agent',
+      systemPrompt: 'Be minimal.',
+    });
+    expect(agent.availableSkills).toEqual([]);
+  });
+
+  it('25 — lists agents by role', () => {
+    const { role } = setupRole();
+    repo.createPredefinedAgent({ roleId: role.id, name: 'Alpha', description: 'A', systemPrompt: 'P1' });
+    repo.createPredefinedAgent({ roleId: role.id, name: 'Beta', description: 'B', systemPrompt: 'P2' });
+
+    const agents = repo.getAgentsByRole(role.id);
+    expect(agents).toHaveLength(2);
+    expect(agents[0].name).toBe('Alpha');
+    expect(agents[1].name).toBe('Beta');
+  });
+
+  it('26 — deletes a predefined agent', () => {
+    const { role } = setupRole();
+    const agent = repo.createPredefinedAgent({ roleId: role.id, name: 'Del', description: 'D', systemPrompt: 'P' });
+    repo.deletePredefinedAgent(agent.id);
+    expect(repo.getPredefinedAgent(agent.id)).toBeUndefined();
+  });
+});
+
+describe('skill CRUD', () => {
+  function setupSource() {
+    const domain = repo.createDomain({ name: 'SkillD', description: 'Skill domain' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'SkillS', url: 'https://sk', description: 'Skill source' });
+    return { domain, source };
+  }
+
+  it('27 — creates and retrieves a skill with parameters and schema', () => {
+    const { source } = setupSource();
+    const skill = repo.createSkill({
+      sourceId: source.id,
+      name: 'Code Search',
+      description: 'Search code in repository',
+      category: 'development',
+      parameters: [
+        { name: 'query', type: 'string', description: 'Search query', required: true },
+        { name: 'limit', type: 'number', description: 'Max results', required: false, defaultValue: 10 },
+      ],
+      inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+      outputSchema: { type: 'array', items: { type: 'string' } },
+    });
+
+    expect(skill.id).toBeDefined();
+    expect(skill.sourceId).toBe(source.id);
+    expect(skill.name).toBe('Code Search');
+    expect(skill.category).toBe('development');
+    expect(skill.parameters).toHaveLength(2);
+    expect(skill.parameters[0].name).toBe('query');
+    expect(skill.parameters[0].required).toBe(true);
+    expect(skill.parameters[1].defaultValue).toBe(10);
+    expect(skill.inputSchema).toBeDefined();
+    expect(skill.outputSchema).toBeDefined();
+
+    const retrieved = repo.getSkill(skill.id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.parameters).toEqual(skill.parameters);
+  });
+
+  it('28 — creates skill with minimal fields', () => {
+    const { source } = setupSource();
+    const skill = repo.createSkill({
+      sourceId: source.id,
+      name: 'Minimal Skill',
+      description: 'No params or schema',
+      category: 'other',
+    });
+
+    expect(skill.id).toBeDefined();
+    expect(skill.parameters).toEqual([]);
+    expect(skill.inputSchema).toBeUndefined();
+    expect(skill.outputSchema).toBeUndefined();
+  });
+
+  it('29 — lists skills by source', () => {
+    const { source } = setupSource();
+    repo.createSkill({ sourceId: source.id, name: 'Skill B', description: 'B', category: 'analysis' });
+    repo.createSkill({ sourceId: source.id, name: 'Skill A', description: 'A', category: 'research' });
+
+    const skills = repo.getSkillsBySource(source.id);
+    expect(skills).toHaveLength(2);
+    expect(skills[0].name).toBe('Skill A');
+    expect(skills[1].name).toBe('Skill B');
+  });
+
+  it('30 — deletes a skill', () => {
+    const { source } = setupSource();
+    const skill = repo.createSkill({ sourceId: source.id, name: 'Del', description: 'D', category: 'other' });
+    repo.deleteSkill(skill.id);
+    expect(repo.getSkill(skill.id)).toBeUndefined();
+  });
+});
+
+describe('agent-skill association CRUD', () => {
+  function setupAgentAndSkill() {
+    const domain = repo.createDomain({ name: 'AssocD', description: 'Assoc domain' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'AssocS', url: 'https://assoc', description: 'Assoc source' });
+    const role = repo.createAgentRole({ sourceId: source.id, name: 'AssocR', description: 'Assoc role' });
+    const agent = repo.createPredefinedAgent({ roleId: role.id, name: 'AssocA', description: 'Assoc agent', systemPrompt: 'P' });
+    const skill = repo.createSkill({ sourceId: source.id, name: 'AssocSkill', description: 'Assoc skill', category: 'development' });
+    return { agent, skill };
+  }
+
+  it('31 — adds and retrieves agent skills', () => {
+    const { agent, skill } = setupAgentAndSkill();
+    repo.addAgentSkill(agent.id, skill.id);
+
+    const skills = repo.getAgentSkills(agent.id);
+    expect(skills).toEqual([skill.id]);
+  });
+
+  it('32 — ignores duplicate association', () => {
+    const { agent, skill } = setupAgentAndSkill();
+    repo.addAgentSkill(agent.id, skill.id);
+    repo.addAgentSkill(agent.id, skill.id); // should not throw
+
+    const skills = repo.getAgentSkills(agent.id);
+    expect(skills).toHaveLength(1);
+  });
+
+  it('33 — removes an agent-skill association', () => {
+    const { agent, skill } = setupAgentAndSkill();
+    repo.addAgentSkill(agent.id, skill.id);
+    expect(repo.getAgentSkills(agent.id)).toHaveLength(1);
+
+    repo.removeAgentSkill(agent.id, skill.id);
+    expect(repo.getAgentSkills(agent.id)).toHaveLength(0);
+  });
+
+  it('34 — cascading delete removes associations', () => {
+    const { agent, skill } = setupAgentAndSkill();
+    repo.addAgentSkill(agent.id, skill.id);
+    expect(repo.getAgentSkills(agent.id)).toHaveLength(1);
+
+    // Delete the agent, association should be gone via CASCADE
+    repo.deletePredefinedAgent(agent.id);
+    expect(repo.getAgentSkills(agent.id)).toHaveLength(0);
+  });
+});

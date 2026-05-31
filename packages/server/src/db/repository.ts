@@ -10,6 +10,12 @@ import type {
   AgentStatus,
   PhaseDefinition,
   AgentDefinition,
+  Domain,
+  AgentSource,
+  AgentRole,
+  PredefinedAgent,
+  Skill,
+  SkillParameter,
 } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
@@ -325,4 +331,438 @@ function rowToAgentRun(row: Record<string, unknown>): AgentRun {
     startedAt: (row.started_at as string) ?? undefined,
     completedAt: (row.completed_at as string) ?? undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Domain registry CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new domain entry.
+ */
+export function createDomain(data: {
+  name: string;
+  description: string;
+  icon?: string;
+}): Domain {
+  const db = getDb();
+  const id = uuidv4();
+  withRetry(() =>
+    db
+      .prepare(
+        'INSERT INTO domains (id, name, description, icon) VALUES (?, ?, ?, ?)',
+      )
+      .run(id, data.name, data.description, data.icon ?? null),
+  );
+  return getDomain(id)!;
+}
+
+/**
+ * Retrieve a single domain by ID.
+ */
+export function getDomain(id: string): Domain | undefined {
+  const db = getDb();
+  const row = withRetry(() =>
+    db.prepare('SELECT * FROM domains WHERE id = ?').get(id),
+  ) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    description: row.description as string,
+    icon: (row.icon as string) ?? undefined,
+  };
+}
+
+/**
+ * List all domains.
+ */
+export function getAllDomains(): Domain[] {
+  const db = getDb();
+  const rows = withRetry(() =>
+    db.prepare('SELECT * FROM domains ORDER BY name ASC').all(),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    description: row.description as string,
+    icon: (row.icon as string) ?? undefined,
+  }));
+}
+
+/**
+ * Delete a domain by ID (cascades to sources, roles, agents, skills).
+ */
+export function deleteDomain(id: string): void {
+  const db = getDb();
+  withRetry(() => db.prepare('DELETE FROM domains WHERE id = ?').run(id));
+}
+
+// ---------------------------------------------------------------------------
+// Agent source CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new agent source under a domain.
+ */
+export function createAgentSource(data: {
+  domainId: string;
+  name: string;
+  url: string;
+  description: string;
+}): AgentSource {
+  const db = getDb();
+  const id = uuidv4();
+  withRetry(() =>
+    db
+      .prepare(
+        'INSERT INTO agent_sources (id, domain_id, name, url, description) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(id, data.domainId, data.name, data.url, data.description),
+  );
+  return getAgentSource(id)!;
+}
+
+/**
+ * Retrieve a single agent source by ID.
+ */
+export function getAgentSource(id: string): AgentSource | undefined {
+  const db = getDb();
+  const row = withRetry(() =>
+    db.prepare('SELECT * FROM agent_sources WHERE id = ?').get(id),
+  ) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id as string,
+    domainId: row.domain_id as string,
+    name: row.name as string,
+    url: row.url as string,
+    description: row.description as string,
+  };
+}
+
+/**
+ * List all agent sources belonging to a domain.
+ */
+export function getSourcesByDomain(domainId: string): AgentSource[] {
+  const db = getDb();
+  const rows = withRetry(() =>
+    db
+      .prepare('SELECT * FROM agent_sources WHERE domain_id = ? ORDER BY name ASC')
+      .all(domainId),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: row.id as string,
+    domainId: row.domain_id as string,
+    name: row.name as string,
+    url: row.url as string,
+    description: row.description as string,
+  }));
+}
+
+/**
+ * Delete an agent source by ID (cascades to roles, agents, skills).
+ */
+export function deleteAgentSource(id: string): void {
+  const db = getDb();
+  withRetry(() =>
+    db.prepare('DELETE FROM agent_sources WHERE id = ?').run(id),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Agent role CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new agent role under a source.
+ */
+export function createAgentRole(data: {
+  sourceId: string;
+  name: string;
+  description: string;
+  tier?: number;
+}): AgentRole {
+  const db = getDb();
+  const id = uuidv4();
+  withRetry(() =>
+    db
+      .prepare(
+        'INSERT INTO agent_roles (id, source_id, name, description, tier) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(id, data.sourceId, data.name, data.description, data.tier ?? 0),
+  );
+  return getAgentRole(id)!;
+}
+
+/**
+ * Retrieve a single agent role by ID.
+ */
+export function getAgentRole(id: string): AgentRole | undefined {
+  const db = getDb();
+  const row = withRetry(() =>
+    db.prepare('SELECT * FROM agent_roles WHERE id = ?').get(id),
+  ) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id as string,
+    sourceId: row.source_id as string,
+    name: row.name as string,
+    description: row.description as string,
+    tier: row.tier as number,
+  };
+}
+
+/**
+ * List all agent roles belonging to a source.
+ */
+export function getRolesBySource(sourceId: string): AgentRole[] {
+  const db = getDb();
+  const rows = withRetry(() =>
+    db
+      .prepare(
+        'SELECT * FROM agent_roles WHERE source_id = ? ORDER BY tier ASC, name ASC',
+      )
+      .all(sourceId),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: row.id as string,
+    sourceId: row.source_id as string,
+    name: row.name as string,
+    description: row.description as string,
+    tier: row.tier as number,
+  }));
+}
+
+/**
+ * Delete an agent role by ID (cascades to predefined agents).
+ */
+export function deleteAgentRole(id: string): void {
+  const db = getDb();
+  withRetry(() => db.prepare('DELETE FROM agent_roles WHERE id = ?').run(id));
+}
+
+// ---------------------------------------------------------------------------
+// Predefined agent CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new predefined agent under a role.
+ */
+export function createPredefinedAgent(data: {
+  roleId: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  availableSkills?: string[];
+}): PredefinedAgent {
+  const db = getDb();
+  const id = uuidv4();
+  withRetry(() =>
+    db
+      .prepare(
+        'INSERT INTO predefined_agents (id, role_id, name, description, system_prompt, available_skills) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        id,
+        data.roleId,
+        data.name,
+        data.description,
+        data.systemPrompt,
+        JSON.stringify(data.availableSkills ?? []),
+      ),
+  );
+  return getPredefinedAgent(id)!;
+}
+
+/**
+ * Retrieve a single predefined agent by ID.
+ */
+export function getPredefinedAgent(id: string): PredefinedAgent | undefined {
+  const db = getDb();
+  const row = withRetry(() =>
+    db.prepare('SELECT * FROM predefined_agents WHERE id = ?').get(id),
+  ) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id as string,
+    roleId: row.role_id as string,
+    name: row.name as string,
+    description: row.description as string,
+    systemPrompt: row.system_prompt as string,
+    availableSkills: JSON.parse(row.available_skills as string) as string[],
+  };
+}
+
+/**
+ * List all predefined agents belonging to a role.
+ */
+export function getAgentsByRole(roleId: string): PredefinedAgent[] {
+  const db = getDb();
+  const rows = withRetry(() =>
+    db
+      .prepare(
+        'SELECT * FROM predefined_agents WHERE role_id = ? ORDER BY name ASC',
+      )
+      .all(roleId),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: row.id as string,
+    roleId: row.role_id as string,
+    name: row.name as string,
+    description: row.description as string,
+    systemPrompt: row.system_prompt as string,
+    availableSkills: JSON.parse(row.available_skills as string) as string[],
+  }));
+}
+
+/**
+ * Delete a predefined agent by ID.
+ */
+export function deletePredefinedAgent(id: string): void {
+  const db = getDb();
+  withRetry(() =>
+    db.prepare('DELETE FROM predefined_agents WHERE id = ?').run(id),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Skill CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new skill under a source.
+ */
+export function createSkill(data: {
+  sourceId: string;
+  name: string;
+  description: string;
+  category: string;
+  parameters?: SkillParameter[];
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+}): Skill {
+  const db = getDb();
+  const id = uuidv4();
+  withRetry(() =>
+    db
+      .prepare(
+        'INSERT INTO skills (id, source_id, name, description, category, parameters, input_schema, output_schema) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        id,
+        data.sourceId,
+        data.name,
+        data.description,
+        data.category,
+        JSON.stringify(data.parameters ?? []),
+        data.inputSchema ? JSON.stringify(data.inputSchema) : null,
+        data.outputSchema ? JSON.stringify(data.outputSchema) : null,
+      ),
+  );
+  return getSkill(id)!;
+}
+
+/**
+ * Retrieve a single skill by ID.
+ */
+export function getSkill(id: string): Skill | undefined {
+  const db = getDb();
+  const row = withRetry(() =>
+    db.prepare('SELECT * FROM skills WHERE id = ?').get(id),
+  ) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  return {
+    id: row.id as string,
+    sourceId: row.source_id as string,
+    name: row.name as string,
+    description: row.description as string,
+    category: row.category as Skill['category'],
+    parameters: JSON.parse(row.parameters as string) as SkillParameter[],
+    inputSchema: row.input_schema
+      ? (JSON.parse(row.input_schema as string) as Record<string, unknown>)
+      : undefined,
+    outputSchema: row.output_schema
+      ? (JSON.parse(row.output_schema as string) as Record<string, unknown>)
+      : undefined,
+  };
+}
+
+/**
+ * List all skills belonging to a source.
+ */
+export function getSkillsBySource(sourceId: string): Skill[] {
+  const db = getDb();
+  const rows = withRetry(() =>
+    db
+      .prepare('SELECT * FROM skills WHERE source_id = ? ORDER BY name ASC')
+      .all(sourceId),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: row.id as string,
+    sourceId: row.source_id as string,
+    name: row.name as string,
+    description: row.description as string,
+    category: row.category as Skill['category'],
+    parameters: JSON.parse(row.parameters as string) as SkillParameter[],
+    inputSchema: row.input_schema
+      ? (JSON.parse(row.input_schema as string) as Record<string, unknown>)
+      : undefined,
+    outputSchema: row.output_schema
+      ? (JSON.parse(row.output_schema as string) as Record<string, unknown>)
+      : undefined,
+  }));
+}
+
+/**
+ * Delete a skill by ID.
+ */
+export function deleteSkill(id: string): void {
+  const db = getDb();
+  withRetry(() => db.prepare('DELETE FROM skills WHERE id = ?').run(id));
+}
+
+// ---------------------------------------------------------------------------
+// Agent-skill association CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Associate a skill with a predefined agent.
+ */
+export function addAgentSkill(agentId: string, skillId: string): void {
+  const db = getDb();
+  withRetry(() =>
+    db
+      .prepare(
+        'INSERT OR IGNORE INTO agent_skills (agent_id, skill_id) VALUES (?, ?)',
+      )
+      .run(agentId, skillId),
+  );
+}
+
+/**
+ * List all skill IDs associated with a predefined agent.
+ */
+export function getAgentSkills(agentId: string): string[] {
+  const db = getDb();
+  const rows = withRetry(() =>
+    db
+      .prepare('SELECT skill_id FROM agent_skills WHERE agent_id = ?')
+      .all(agentId),
+  ) as { skill_id: string }[];
+  return rows.map((r) => r.skill_id);
+}
+
+/**
+ * Remove a skill association from a predefined agent.
+ */
+export function removeAgentSkill(agentId: string, skillId: string): void {
+  const db = getDb();
+  withRetry(() =>
+    db
+      .prepare(
+        'DELETE FROM agent_skills WHERE agent_id = ? AND skill_id = ?',
+      )
+      .run(agentId, skillId),
+  );
 }

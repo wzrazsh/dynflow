@@ -3,6 +3,10 @@ import cors from 'cors'
 import workflowCrudRoutes from './api/workflows.js'
 import sseRoutes from './api/sse.js'
 import workflowControlRoutes from './api/workflows-control.js'
+import domainsRouter from './api/domains.js'
+import agentSourcesRouter from './api/agent-sources.js'
+import predefinedAgentsRouter from './api/predefined-agents.js'
+import skillsRouter from './api/skills.js'
 
 export function createApp() {
   const app = express()
@@ -20,6 +24,11 @@ export function createApp() {
   app.use('/api/workflows', workflowCrudRoutes)
   app.use('/api/workflows', sseRoutes)
   app.use('/api/workflows', workflowControlRoutes)
+
+  app.use('/api/domains', domainsRouter)
+  app.use('/api/agent-sources', agentSourcesRouter)
+  app.use('/api/predefined-agents', predefinedAgentsRouter)
+  app.use('/api/skills', skillsRouter)
 
   return app
 }

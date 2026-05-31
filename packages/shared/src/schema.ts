@@ -5,17 +5,29 @@ import type { ValidationResult, ValidationError } from './types.js';
 // Zod schemas for WorkflowDefinition
 // ---------------------------------------------------------------------------
 
-const AgentSchema = z.object({
-  name: z.string().min(1, 'Agent name is required'),
-  prompt: z.string().min(1, 'Agent prompt is required'),
-  model: z.string().optional(),
-  timeoutMs: z
-    .number()
-    .int()
-    .min(1000, 'Timeout must be at least 1000ms')
-    .max(600000, 'Timeout must not exceed 600000ms')
-    .optional(),
-});
+const AgentSchema = z
+  .object({
+    name: z.string().min(1, 'Agent name is required'),
+    prompt: z.string().min(1, 'Agent prompt is required').optional(),
+    agentId: z.string().optional(),
+    model: z.string().optional(),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(1000, 'Timeout must be at least 1000ms')
+      .max(600000, 'Timeout must not exceed 600000ms')
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.prompt && !data.agentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['prompt'],
+        message:
+          'Agent must have either a prompt (for dynamic agents) or an agentId (for predefined agents)',
+      });
+    }
+  });
 
 const PhaseSchema = z.object({
   name: z.string().min(1, 'Phase name is required'),
@@ -161,6 +173,11 @@ function detectCustomErrorCode(issue: z.ZodIssue): string {
   // DUPLICATE_AGENT_NAME — at path "phases.N.agents", message mentions "duplicate agent name"
   if (/^phases\.\d+\.agents$/.test(pathStr) && msg.includes('duplicate agent name')) {
     return 'DUPLICATE_AGENT_NAME';
+  }
+
+  // MISSING_PROMPT_OR_AGENT_ID — message mentions "must have either a prompt or an agentId"
+  if (msg.includes('must have either a prompt')) {
+    return 'MISSING_PROMPT_OR_AGENT_ID';
   }
 
   return 'INVALID_INPUT';

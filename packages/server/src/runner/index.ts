@@ -1,6 +1,7 @@
 import { DockerAgentRunner } from './docker-runner.js';
 import { WslDockerAgentRunner } from './wsl-docker-runner.js';
 import type { AgentRunner } from './types.js';
+import { logger } from '../logger.js';
 
 /**
  * Get the appropriate Docker agent runner based on availability.
@@ -11,28 +12,28 @@ import type { AgentRunner } from './types.js';
  * 3. Throws error if neither is available
  */
 export function createAgentRunner(): AgentRunner {
-  console.log('Checking Docker availability...');
+  logger.info('Checking Docker availability...');
   
   // Check WSL Docker first (preferred for Windows)
   const wslAvailable = WslDockerAgentRunner.isAvailable();
-  console.log(`WSL Docker available: ${wslAvailable}`);
+  logger.info(`WSL Docker available: ${wslAvailable}`);
   
   if (wslAvailable) {
-    console.log('Using Docker via WSL');
+    logger.info('Using Docker via WSL');
     return new WslDockerAgentRunner();
   }
 
   // Fall back to native Docker
   const nativeAvailable = DockerAgentRunner.isAvailable();
-  console.log(`Native Docker available: ${nativeAvailable}`);
+  logger.info(`Native Docker available: ${nativeAvailable}`);
   
   if (nativeAvailable) {
-    console.log('Using native Docker');
+    logger.info('Using native Docker');
     return new DockerAgentRunner();
   }
 
   // No Docker available
-  console.error('No Docker runtime available');
+  logger.error('No Docker runtime available');
   throw new Error(
     'Docker is not available. Please start Docker Desktop with WSL integration enabled.',
   );
@@ -63,7 +64,7 @@ export async function cleanupContainers(): Promise<void> {
     try {
       await runner.cleanup();
     } catch (err) {
-      console.warn('Container cleanup warning:', String(err));
+      logger.warn('Container cleanup warning:', String(err));
     }
   }
 }

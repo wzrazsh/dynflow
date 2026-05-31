@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { get } from '../api/client.js';
+import { get, post } from '../api/client.js';
 import type { WorkflowTemplate, ApiResponse } from '@dynflow/shared';
 
 interface TemplateDetailProps {
@@ -39,6 +39,7 @@ export default function TemplateDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [running, setRunning] = useState(false);
 
   const loadTemplate = useCallback(async () => {
     try {
@@ -79,13 +80,22 @@ export default function TemplateDetail({
     if (!template) return;
     setExporting(true);
     try {
-      const blob = new Blob([template.script], {
-        type: 'application/javascript',
+      // Generate .ts file with header comments (matching import format)
+      const header = `// DynFlow Workflow Template
+// Name: ${template.name}
+// Description: ${template.description || 'No description'}
+// Version: ${template.currentVersion}
+// Exported at: ${new Date().toISOString()}
+
+`;
+      const content = header + template.script;
+      const blob = new Blob([content], {
+        type: 'text/typescript',
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${template.name.replace(/\s+/g, '_')}.js`;
+      a.download = `${template.name.replace(/\s+/g, '_')}.ts`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -95,6 +105,28 @@ export default function TemplateDetail({
       onError?.('Failed to export template');
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleRun() {
+    if (!template) return;
+    setRunning(true);
+    try {
+      const res = await post<ApiResponse<{ id: string }>>(
+        `/api/templates/${template.id}/run`,
+        {}
+      );
+      if (res.success) {
+        onSuccess?.(`Template "${template.name}" executed successfully. Workflow run created.`);
+      } else {
+        const msg = res.error || 'Failed to run template';
+        onError?.(msg);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to run template';
+      onError?.(msg);
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -319,9 +351,10 @@ export default function TemplateDetail({
       <div style={styles.actions}>
         <button
           style={styles.primaryButton}
-          onClick={() => onSuccess?.('Run template: ' + template.name)}
+          onClick={handleRun}
+          disabled={running}
         >
-          Run
+          {running ? 'Running...' : 'Run'}
         </button>
         <button
           style={styles.secondaryButton}

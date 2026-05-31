@@ -7,9 +7,10 @@ import type { WorkflowTemplate } from '@dynflow/shared';
 // Mock the API client module
 vi.mock('../api/client', () => ({
   get: vi.fn(),
+  post: vi.fn(),
 }));
 
-import { get } from '../api/client';
+import { get, post } from '../api/client';
 
 const mockTemplate: WorkflowTemplate = {
   id: 'tpl-1',
@@ -318,6 +319,10 @@ describe('TemplateDetail', () => {
       success: true,
       data: mockTemplate,
     });
+    vi.mocked(post).mockResolvedValue({
+      success: true,
+      data: { id: 'run-1' },
+    });
 
     render(
       <TemplateDetail
@@ -333,8 +338,9 @@ describe('TemplateDetail', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'Run' }));
+    expect(post).toHaveBeenCalledWith('/api/templates/tpl-1/run', {});
     expect(onSuccess).toHaveBeenCalledWith(
-      'Run template: Research Flow',
+      'Template "Research Flow" executed successfully. Workflow run created.',
     );
   });
 

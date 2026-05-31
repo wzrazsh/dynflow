@@ -1,5 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
+import { logger } from './logger.js'
 import workflowCrudRoutes from './api/workflows.js'
 import sseRoutes from './api/sse.js'
 import workflowControlRoutes from './api/workflows-control.js'
@@ -50,7 +51,7 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
     error: err instanceof Error ? err.message : 'Internal server error',

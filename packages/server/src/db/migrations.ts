@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { getDb, withRetry } from './connection.js';
+import { logger } from '../logger.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,12 +95,12 @@ export function runMigrations(): void {
     for (const migration of migrations) {
       if (appliedVersions.has(migration.version)) continue;
 
-      console.log(`[migrations] Applying v${migration.version}: ${migration.name}`);
+      logger.info(`[migrations] Applying v${migration.version}: ${migration.name}`);
       migration.up(db);
       db.prepare(
         'INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)',
       ).run(migration.version, migration.name, new Date().toISOString());
-      console.log(`[migrations] Applied v${migration.version}: ${migration.name}`);
+      logger.info(`[migrations] Applied v${migration.version}: ${migration.name}`);
     }
   });
 }
@@ -138,7 +139,7 @@ export function rollbackLastMigration(): MigrationRecord | null {
     const applied = getAppliedMigrations(db);
 
     if (applied.length === 0) {
-      console.log('[migrations] No migrations to roll back');
+      logger.info('[migrations] No migrations to roll back');
       return null;
     }
 
@@ -146,16 +147,16 @@ export function rollbackLastMigration(): MigrationRecord | null {
     const migration = migrations.find((m) => m.version === last.version);
 
     if (!migration) {
-      console.warn(
+      logger.warn(
         `[migrations] No definition found for v${last.version} — cannot roll back`,
       );
       return null;
     }
 
-    console.log(`[migrations] Rolling back v${migration.version}: ${migration.name}`);
+    logger.info(`[migrations] Rolling back v${migration.version}: ${migration.name}`);
     migration.down(db);
     db.prepare('DELETE FROM _migrations WHERE version = ?').run(migration.version);
-    console.log(`[migrations] Rolled back v${migration.version}: ${migration.name}`);
+    logger.info(`[migrations] Rolled back v${migration.version}: ${migration.name}`);
 
     return last;
   });

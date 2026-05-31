@@ -9,6 +9,8 @@ import SkillPicker from './components/SkillPicker';
 import TemplateList from './components/TemplateList';
 import TemplateDetail from './components/TemplateDetail';
 import TemplateForm from './components/TemplateForm';
+import TemplateVersionHistory from './components/TemplateVersionHistory';
+import ImportExport from './components/ImportExport';
 import type { WorkflowTemplate } from '@dynflow/shared';
 
 type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail';
@@ -22,6 +24,8 @@ export default function App() {
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [templateToEdit, setTemplateToEdit] = useState<WorkflowTemplate | undefined>(undefined);
   const [templateListKey, setTemplateListKey] = useState(0);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showImportExport, setShowImportExport] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
     type: 'error' | 'info' | 'success';
@@ -261,19 +265,97 @@ export default function App() {
         )}
 
         {view === 'template-detail' && selectedTemplateId && (
-          <TemplateDetail
-            templateId={selectedTemplateId}
-            onBack={() => {
-              setSelectedTemplateId(null);
-              setView('templates');
-            }}
-            onEdit={(t) => {
-              setTemplateToEdit(t);
-              setShowTemplateForm(true);
-            }}
-            onError={showError}
-            onSuccess={showSuccess}
-          />
+          <div>
+            <TemplateDetail
+              templateId={selectedTemplateId}
+              onBack={() => {
+                setSelectedTemplateId(null);
+                setView('templates');
+                setShowVersionHistory(false);
+                setShowImportExport(false);
+              }}
+              onEdit={(t) => {
+                setTemplateToEdit(t);
+                setShowTemplateForm(true);
+              }}
+              onError={showError}
+              onSuccess={showSuccess}
+            />
+            
+            {/* Additional Actions */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, marginBottom: 16 }}>
+              <button
+                onClick={() => {
+                  setShowVersionHistory(!showVersionHistory);
+                  setShowImportExport(false);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: showVersionHistory ? '#1976d2' : '#fff',
+                  color: showVersionHistory ? '#fff' : '#374151',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 4,
+                  fontSize: '0.8125rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Version History
+              </button>
+              <button
+                onClick={() => {
+                  setShowImportExport(!showImportExport);
+                  setShowVersionHistory(false);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: showImportExport ? '#1976d2' : '#fff',
+                  color: showImportExport ? '#fff' : '#374151',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 4,
+                  fontSize: '0.8125rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Import/Export
+              </button>
+            </div>
+
+            {/* Version History Panel */}
+            {showVersionHistory && (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                <TemplateVersionHistory
+                  templateId={selectedTemplateId}
+                  currentVersion={1}
+                  onVersionSelect={(v) => console.log('Selected version:', v)}
+                  onRollback={async (v) => {
+                    try {
+                      const { post } = await import('./api/client.js');
+                      await post(`/api/templates/${selectedTemplateId}/rollback`, { version: v });
+                      showSuccess(`Rolled back to version ${v}`);
+                      setShowVersionHistory(false);
+                    } catch (e) {
+                      showError(String(e));
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Import/Export Panel */}
+            {showImportExport && (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                <ImportExport
+                  templateId={selectedTemplateId}
+                  onImported={(t) => {
+                    setSelectedTemplateId(t.id);
+                    setTemplateListKey((k) => k + 1);
+                    showSuccess('Template imported successfully');
+                  }}
+                  onError={showError}
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {showTemplateForm && (

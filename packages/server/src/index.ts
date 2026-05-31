@@ -11,6 +11,7 @@ import { createApp, errorHandler } from './app.js'
 import { isDockerAvailable, cleanupContainers } from './runner/index.js';
 import { initSchema } from './db/schema.js';
 import { runMigrations, getMigrationStatus } from './db/migrations.js';
+import { logger } from './logger.js';
 
 const port = process.env.PORT || 3001
 const app = createApp()
@@ -20,13 +21,13 @@ const app = createApp()
 // ---------------------------------------------------------------------------
 
 initSchema();
-console.log('Database tables initialized');
+logger.info('Database tables initialized');
 
 runMigrations();
 const statuses = getMigrationStatus();
 const applied = statuses.filter((s) => s.applied).length;
 const pending = statuses.filter((s) => !s.applied).length;
-console.log(`Migrations: ${applied} applied, ${pending} pending`);
+logger.info(`Migrations: ${applied} applied, ${pending} pending`);
 
 // ---------------------------------------------------------------------------
 // Startup checks & cleanup
@@ -34,14 +35,14 @@ console.log(`Migrations: ${applied} applied, ${pending} pending`);
 
 // Check Docker availability
 if (isDockerAvailable()) {
-  console.log('Docker is available');
+  logger.info('Docker is available');
 
   // Clean up orphaned dynflow containers from previous runs
   cleanupContainers()
-    .then(() => console.log('Orphaned dynflow containers cleaned up'))
-    .catch((err: unknown) => console.warn('Container cleanup warning:', String(err)));
+    .then(() => logger.info('Orphaned dynflow containers cleaned up'))
+    .catch((err: unknown) => logger.warn('Container cleanup warning:', String(err)));
 } else {
-  console.warn(
+  logger.warn(
     'Docker is not available. Workflow execution will fail until Docker is started.',
   );
 }
@@ -54,7 +55,7 @@ if (isDockerAvailable()) {
 app.use(errorHandler);
 
 const server = app.listen(port, () => {
-  console.log(`DynFlow server listening on port ${port}`)
+  logger.info(`DynFlow server listening on port ${port}`)
 });
 
 // ---------------------------------------------------------------------------
@@ -62,19 +63,19 @@ const server = app.listen(port, () => {
 // ---------------------------------------------------------------------------
 
 async function shutdown(signal: string): Promise<void> {
-  console.log(`Received ${signal}. Shutting down gracefully...`);
+  logger.info(`Received ${signal}. Shutting down gracefully...`);
 
   // Stop accepting new connections
   server.close(() => {
-    console.log('HTTP server closed');
+    logger.info('HTTP server closed');
   });
 
   // Clean up any running Docker containers
   try {
     await cleanupContainers();
-    console.log('Docker containers cleaned up');
+    logger.info('Docker containers cleaned up');
   } catch (err) {
-    console.warn('Cleanup warning:', String(err));
+    logger.warn('Cleanup warning:', String(err));
   }
 
   process.exit(0);

@@ -41,6 +41,10 @@ Thumbs.db
 # DynFlow specific
 .sisyphus/
 .gstack/
+.omx/
+
+# Error logs
+*.err
 
 # Docker
 docker-compose.override.yml

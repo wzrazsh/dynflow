@@ -1,13 +1,21 @@
 import { Router } from 'express';
 import type { ApiResponse, Skill } from '@dynflow/shared';
+import * as repo from '../db/repository.js';
 
 const router = Router();
 
-// GET / — List all skills (with optional filtering by sourceId or category)
+// GET / — List all skills with pagination and optional filtering
 router.get('/', (req, res) => {
-  const { sourceId, category } = req.query;
-  // TODO: Filter by sourceId and/or category when DB is implemented
-  res.json({ success: true, data: [] } as ApiResponse<Skill[]>);
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
+    const sourceId = req.query.sourceId as string | undefined;
+    const category = req.query.category as string | undefined;
+    const { skills, total } = repo.getSkillsPaginated(page, pageSize, sourceId, category);
+    res.json({ success: true, data: skills, page, pageSize, total } as any);
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
 });
 
 // POST / — Create skill

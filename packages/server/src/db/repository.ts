@@ -836,6 +836,62 @@ export function getSkillsBySource(sourceId: string): Skill[] {
 }
 
 /**
+ * List all skills with pagination and optional source/category filtering.
+ */
+export function getSkillsPaginated(
+  page: number,
+  pageSize: number,
+  sourceId?: string,
+  category?: string,
+): { skills: Skill[]; total: number } {
+  const db = getDb();
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (sourceId) {
+    conditions.push('source_id = ?');
+    params.push(sourceId);
+  }
+  if (category) {
+    conditions.push('category = ?');
+    params.push(category);
+  }
+
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+
+  const countRow = withRetry(() =>
+    db.prepare(`SELECT COUNT(*) as count FROM skills${whereClause}`).get(...params),
+  ) as { count: number };
+  const total = countRow.count;
+
+  const offset = (page - 1) * pageSize;
+  const rows = withRetry(() =>
+    db
+      .prepare(`SELECT * FROM skills${whereClause} ORDER BY name ASC LIMIT ? OFFSET ?`)
+      .all(...params, pageSize, offset),
+  ) as Record<string, unknown>[];
+
+  return {
+    skills: rows.map((row) => ({
+      id: row.id as string,
+      sourceId: row.source_id as string,
+      name: row.name as string,
+      description: row.description as string,
+      category: row.category as Skill['category'],
+      parameters: JSON.parse(row.parameters as string) as SkillParameter[],
+      inputSchema: row.input_schema
+        ? (JSON.parse(row.input_schema as string) as Record<string, unknown>)
+        : undefined,
+      outputSchema: row.output_schema
+        ? (JSON.parse(row.output_schema as string) as Record<string, unknown>)
+        : undefined,
+    })),
+    total,
+  };
+}
+
+/**
  * Delete a skill by ID.
  */
 export function deleteSkill(id: string): void {

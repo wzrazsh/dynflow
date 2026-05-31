@@ -7,6 +7,8 @@ import domainsRouter from './api/domains.js'
 import agentSourcesRouter from './api/agent-sources.js'
 import predefinedAgentsRouter from './api/predefined-agents.js'
 import skillsRouter from './api/skills.js'
+import orchestrateRouter from './api/orchestrate.js'
+import metaRouter from './api/meta.js'
 
 export function createApp() {
   const app = express()
@@ -29,6 +31,9 @@ export function createApp() {
   app.use('/api/agent-sources', agentSourcesRouter)
   app.use('/api/predefined-agents', predefinedAgentsRouter)
   app.use('/api/skills', skillsRouter)
+
+  app.use('/api/orchestrate', orchestrateRouter)
+  app.use('/api/meta', metaRouter)
 
   return app
 }

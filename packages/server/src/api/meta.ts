@@ -46,7 +46,7 @@ router.post('/extract', (req, res) => {
     }
 
     const result: ExtractionResult = extractAll(files as ScannedFile[]);
-    res.json({ success: true, ...result });
+    res.json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }

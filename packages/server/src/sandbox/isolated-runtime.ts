@@ -25,7 +25,8 @@ import type { SandboxResult, SandboxOptions } from './types.js';
 
 interface ParsedAgent {
   name: string;
-  prompt: string;
+  prompt?: string;
+  agentId?: string;
   line: number;
 }
 
@@ -119,17 +120,33 @@ function phase(name, fn) {
   __currentPhase__ = null;
 }
 
-function agent(name, prompt) {
+function agent(name, promptOrConfig) {
   if (__currentPhase__ === null) {
     throw new Error("agent() called outside phase()");
   }
   if (typeof name !== 'string' || name.trim().length === 0) {
     throw new Error("Agent name is required");
   }
-  if (typeof prompt !== 'string' || prompt.trim().length === 0) {
-    throw new Error("Agent prompt is required");
+  if (typeof promptOrConfig === 'string') {
+    if (promptOrConfig.trim().length === 0) {
+      throw new Error("Agent prompt is required");
+    }
+    __currentPhase__.agents.push({ name: name, prompt: promptOrConfig });
+  } else if (typeof promptOrConfig === 'object' && promptOrConfig !== null) {
+    var entry = { name: name };
+    if (promptOrConfig.prompt) {
+      entry.prompt = promptOrConfig.prompt;
+    }
+    if (promptOrConfig.agentId) {
+      entry.agentId = promptOrConfig.agentId;
+    }
+    if (!entry.prompt && !entry.agentId) {
+      throw new Error("Agent must have either a prompt or an agentId");
+    }
+    __currentPhase__.agents.push(entry);
+  } else {
+    throw new Error("agent() second argument must be a string or an object with agentId/prompt");
   }
-  __currentPhase__.agents.push({ name: name, prompt: prompt });
 }
 `;
 
@@ -147,7 +164,7 @@ function agent(name, prompt) {
 
     // Extract the recorded phases
     const phasesRef = await context.global.get('__phases__');
-    const raw: Array<{ name: string; agents: Array<{ name: string; prompt: string }> }> =
+    const raw: Array<{ name: string; agents: Array<{ name: string; prompt?: string; agentId?: string }> }> =
       await phasesRef.copy();
 
     // Validate limits
@@ -172,7 +189,7 @@ function agent(name, prompt) {
         (p): PhaseDefinition => ({
           name: p.name,
           agents: p.agents.map(
-            (a): AgentDefinition => ({ name: a.name, prompt: a.prompt }),
+          (a): AgentDefinition => ({ name: a.name, prompt: a.prompt ?? '', ...(a.agentId ? { agentId: a.agentId } : {}) }),
           ),
         }),
       ),
@@ -304,10 +321,10 @@ async function parseScript(script: string): Promise<SandboxResult> {
           line: agent.line,
         };
       }
-      if (!agent.prompt || agent.prompt.trim().length === 0) {
+      if (!agent.prompt && !agent.agentId) {
         return {
           success: false,
-          error: 'Agent prompt is required',
+          error: 'Agent must have either a prompt (for dynamic agents) or an agentId (for predefined agents)',
           line: agent.line,
         };
       }
@@ -336,7 +353,7 @@ async function parseScript(script: string): Promise<SandboxResult> {
       (p): PhaseDefinition => ({
         name: p.name,
         agents: p.agents.map(
-          (a): AgentDefinition => ({ name: a.name, prompt: a.prompt }),
+          (a): AgentDefinition => ({ name: a.name, prompt: a.prompt ?? '', ...(a.agentId ? { agentId: a.agentId } : {}) }),
         ),
       }),
     ),
@@ -611,16 +628,30 @@ function extractAgents(body: string, offset: number): ParsedAgent[] {
     if (body[pos] !== ',') continue;
     pos++;
 
-    // Parse agent prompt
+    // Parse agent prompt or config object ({ agentId, prompt? })
     pos = skipWhitespace(body, pos);
-    const promptResult = parseStringLiteral(body, pos);
-    if (!promptResult) continue;
-    const agentPrompt = promptResult.value;
+    let agentPrompt = '';
+    let agentId: string | undefined;
+    if (body[pos] === '{') {
+      const objResult = parseSimpleObjectLiteral(body, pos);
+      if (!objResult) continue;
+      const obj = objResult.value;
+      agentPrompt = obj.prompt || '';
+      agentId = obj.agentId;
+      pos = objResult.nextPos;
+    } else {
+      const promptResult = parseStringLiteral(body, pos);
+      if (!promptResult) continue;
+      agentPrompt = promptResult.value;
+      pos = promptResult.nextPos;
+    }
 
     // Calculate approximate global line
     const agentLine = getLineNumber(body, m.index);
 
-    agents.push({ name: agentName, prompt: agentPrompt, line: agentLine });
+    const agentEntry: ParsedAgent = { name: agentName, prompt: agentPrompt, line: agentLine };
+    if (agentId) agentEntry.agentId = agentId;
+    agents.push(agentEntry);
   }
 
   return agents;
@@ -689,6 +720,53 @@ function parseStringLiteral(
   }
 
   return null; // unterminated string
+}
+
+/**
+ * Parse a simple JS object literal with string-valued keys.
+ * Supports: `{ agentId: "id", prompt: "text" }`
+ * Returns the parsed key-value map and position after the closing `}`.
+ */
+function parseSimpleObjectLiteral(
+  code: string,
+  pos: number,
+): { value: Record<string, string>; nextPos: number } | null {
+  if (code[pos] !== '{') return null;
+  pos++; // skip {
+  const result: Record<string, string> = {};
+
+  pos = skipWhitespace(code, pos);
+  while (pos < code.length && code[pos] !== '}') {
+    // Parse key
+    pos = skipWhitespace(code, pos);
+    const keyResult = parseStringLiteral(code, pos);
+    if (!keyResult) return null;
+    const key = keyResult.value;
+    pos = keyResult.nextPos;
+
+    // Expect colon
+    pos = skipWhitespace(code, pos);
+    if (code[pos] !== ':') return null;
+    pos++;
+
+    // Parse value (string literal)
+    pos = skipWhitespace(code, pos);
+    const valResult = parseStringLiteral(code, pos);
+    if (!valResult) return null;
+    result[key] = valResult.value;
+    pos = valResult.nextPos;
+
+    // Skip comma if present
+    pos = skipWhitespace(code, pos);
+    if (code[pos] === ',') {
+      pos++;
+      pos = skipWhitespace(code, pos);
+    }
+  }
+
+  if (code[pos] !== '}') return null;
+  pos++; // skip }
+  return { value: result, nextPos: pos };
 }
 
 /**

@@ -189,7 +189,12 @@ function agent(name, promptOrConfig) {
         (p): PhaseDefinition => ({
           name: p.name,
           agents: p.agents.map(
-          (a): AgentDefinition => ({ name: a.name, prompt: a.prompt ?? '', ...(a.agentId ? { agentId: a.agentId } : {}) }),
+          (a): AgentDefinition => {
+            const def: AgentDefinition = { name: a.name } as AgentDefinition;
+            if (a.prompt) def.prompt = a.prompt;
+            if (a.agentId) def.agentId = a.agentId;
+            return def;
+          },
           ),
         }),
       ),
@@ -353,7 +358,12 @@ async function parseScript(script: string): Promise<SandboxResult> {
       (p): PhaseDefinition => ({
         name: p.name,
         agents: p.agents.map(
-          (a): AgentDefinition => ({ name: a.name, prompt: a.prompt ?? '', ...(a.agentId ? { agentId: a.agentId } : {}) }),
+          (a): AgentDefinition => {
+            const def: AgentDefinition = { name: a.name } as AgentDefinition;
+            if (a.prompt) def.prompt = a.prompt;
+            if (a.agentId) def.agentId = a.agentId;
+            return def;
+          },
         ),
       }),
     ),

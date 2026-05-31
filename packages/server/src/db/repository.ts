@@ -182,12 +182,13 @@ export function getOrCreatePhases(
 
     const agentRuns: AgentRun[] = phaseDef.agents.map((agentDef) => {
       const agentId = uuidv4();
-      withRetry(() => insertAgent.run(agentId, phaseId, agentDef.name, agentDef.prompt));
+      const effectivePrompt = resolveEffectivePrompt(agentDef);
+      withRetry(() => insertAgent.run(agentId, phaseId, agentDef.name, effectivePrompt));
       return {
         id: agentId,
         name: agentDef.name,
         status: 'pending' as AgentStatus,
-        prompt: agentDef.prompt,
+        prompt: effectivePrompt,
       };
     });
 
@@ -246,7 +247,8 @@ export function createAgentRuns(
   );
 
   for (const agent of agents) {
-    withRetry(() => insert.run(uuidv4(), phaseRunId, agent.name, agent.prompt));
+    const effectivePrompt = resolveEffectivePrompt(agent);
+    withRetry(() => insert.run(uuidv4(), phaseRunId, agent.name, effectivePrompt));
   }
 }
 
@@ -316,6 +318,30 @@ export function getPhaseAgents(phaseRunId: string): AgentRun[] {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve the effective prompt for an AgentDefinition.
+ *
+ * - If `prompt` is provided, use it directly (inline or override).
+ * - Otherwise, if `agentId` is provided, look it up in the predefined
+ *   agent registry and use its `systemPrompt`.
+ * - If neither exists, throw a controlled error.
+ */
+function resolveEffectivePrompt(agentDef: AgentDefinition): string {
+  if (agentDef.prompt) return agentDef.prompt;
+  if (agentDef.agentId) {
+    const predefined = getPredefinedAgent(agentDef.agentId);
+    if (!predefined) {
+      throw new Error(
+        `Predefined agent "${agentDef.agentId}" not found in registry`,
+      );
+    }
+    return predefined.systemPrompt;
+  }
+  throw new Error(
+    `Agent "${agentDef.name}" must have either a prompt or an agentId`,
+  );
+}
 
 /**
  * Map a raw DB row to an AgentRun.

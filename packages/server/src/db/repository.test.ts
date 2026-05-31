@@ -225,6 +225,103 @@ describe('edge cases', () => {
   });
 });
 
+describe('agentId prompt resolution in createWorkflowRun', () => {
+  function setupPredefinedAgent(): { agentId: string } {
+    const domain = repo.createDomain({ name: 'AgentResolveD', description: 'Resolve test domain' });
+    const source = repo.createAgentSource({ domainId: domain.id, name: 'AgentResolveS', url: 'https://ar', description: 'Resolve test source' });
+    const role = repo.createAgentRole({ sourceId: source.id, name: 'AgentResolveR', description: 'Resolve test role' });
+    const agent = repo.createPredefinedAgent({
+      roleId: role.id,
+      name: 'RegCodeReviewer',
+      description: 'A code reviewer from registry',
+      systemPrompt: 'You are a code reviewer from registry.',
+    });
+    return { agentId: agent.id };
+  }
+
+  it('35 — agentId-only agent resolves to registry systemPrompt', () => {
+    const { agentId } = setupPredefinedAgent();
+
+    const def: WorkflowDefinition = {
+      name: 'resolve-test',
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [
+            { name: 'reviewer', agentId },
+          ],
+        },
+      ],
+    };
+
+    const run = repo.createWorkflowRun(def, 'Resolve Test');
+
+    expect(run.phases[0].agents[0].prompt).toBe('You are a code reviewer from registry.');
+    expect(run.phases[0].agents[0].name).toBe('reviewer');
+  });
+
+  it('36 — prompt-only agent keeps prompt unchanged', () => {
+    const def: WorkflowDefinition = {
+      name: 'inline-test',
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [
+            { name: 'inline-agent', prompt: 'Do something inline' },
+          ],
+        },
+      ],
+    };
+
+    const run = repo.createWorkflowRun(def, 'Inline Test');
+
+    expect(run.phases[0].agents[0].prompt).toBe('Do something inline');
+  });
+
+  it('37 — agentId + prompt override uses the inline prompt', () => {
+    const { agentId } = setupPredefinedAgent();
+
+    const def: WorkflowDefinition = {
+      name: 'override-test',
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [
+            {
+              name: 'overrider',
+              agentId,
+              prompt: 'Override prompt, not registry prompt.',
+            },
+          ],
+        },
+      ],
+    };
+
+    const run = repo.createWorkflowRun(def, 'Override Test');
+
+    // The inline prompt must win over the registry systemPrompt
+    expect(run.phases[0].agents[0].prompt).toBe('Override prompt, not registry prompt.');
+  });
+
+  it('38 — unresolved agentId throws a clear error', () => {
+    const def: WorkflowDefinition = {
+      name: 'bogus-agent',
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [
+            { name: 'ghost', agentId: 'non-existent-agent-id' },
+          ],
+        },
+      ],
+    };
+
+    expect(() => repo.createWorkflowRun(def, 'Bogus Test')).toThrow(
+      'Predefined agent "non-existent-agent-id" not found in registry',
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // SQLite retry wrapper tests
 // ---------------------------------------------------------------------------

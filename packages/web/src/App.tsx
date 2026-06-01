@@ -291,6 +291,10 @@ export default function App() {
                     }}
                     onError={showError}
                     onSuccess={showSuccess}
+                    onDeleted={() => {
+                      setSelectedTemplateId(null);
+                      setTemplateListKey((k) => k + 1);
+                    }}
                   />
                 </div>
               )}
@@ -314,6 +318,13 @@ export default function App() {
               }}
               onError={showError}
               onSuccess={showSuccess}
+              onDeleted={() => {
+                setSelectedTemplateId(null);
+                setView('templates');
+                setShowVersionHistory(false);
+                setShowImportExport(false);
+                setTemplateListKey((k) => k + 1);
+              }}
             />
             
             {/* Additional Actions */}

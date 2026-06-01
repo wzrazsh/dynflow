@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { get, post } from '../api/client.js';
+import { get, post, del } from '../api/client.js';
 import type { WorkflowTemplate, ApiResponse } from '@dynflow/shared';
 
 interface TemplateDetailProps {
@@ -8,6 +8,12 @@ interface TemplateDetailProps {
   onEdit?: (template: WorkflowTemplate) => void;
   onError?: (message: string) => void;
   onSuccess?: (message: string) => void;
+  /**
+   * Called after a successful delete so the parent can refresh the
+   * template list and clear any stale selection. If omitted, falls
+   * back to a plain `onBack()`.
+   */
+  onDeleted?: () => void;
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -34,12 +40,14 @@ export default function TemplateDetail({
   onEdit,
   onError,
   onSuccess,
+  onDeleted,
 }: TemplateDetailProps) {
   const [template, setTemplate] = useState<WorkflowTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [running, setRunning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadTemplate = useCallback(async () => {
     try {
@@ -127,6 +135,31 @@ export default function TemplateDetail({
       onError?.(msg);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!template) return;
+    const ok = window.confirm(
+      `确定要删除模板 "${template.name}" 吗？此操作可在数据库中恢复。`,
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await del<ApiResponse<unknown>>(`/templates/${template.id}`);
+      onSuccess?.(`Template "${template.name}" deleted`);
+      if (onDeleted) {
+        // Parent will refresh the list and clear the selection.
+        onDeleted();
+      } else {
+        // Fallback for callers that don't care to refresh.
+        onBack();
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to delete template';
+      onError?.(msg);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -368,6 +401,17 @@ export default function TemplateDetail({
           disabled={exporting}
         >
           {exporting ? 'Exporting...' : 'Export'}
+        </button>
+        <button
+          style={{
+            ...styles.secondaryButton,
+            color: '#dc2626',
+            borderColor: '#fca5a5',
+          }}
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? 'Deleting...' : 'Delete'}
         </button>
       </div>
     </div>

@@ -8,7 +8,7 @@ const router = Router();
 // POST /api/workflows — Create workflow from JS script
 router.post('/', async (req, res) => {
   try {
-    const { name, script } = req.body;
+    const { name, script, workspace } = req.body;
     if (!name || !script) {
       return res.status(400).json({ success: false, error: 'Name and script are required' });
     }
@@ -19,7 +19,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: result.error, details: { line: result.line } });
     }
 
-    // Validate extracted definition
+    // Merge workspace from the request body into the parsed definition.
+    if (workspace && typeof workspace === 'object') {
+      result.definition!.workspace = workspace;
+    }
+
+    // Validate extracted definition (now including workspace)
     const { validateWorkflowDefinition } = await import('@dynflow/shared');
     const validation = validateWorkflowDefinition(result.definition!);
     if (!validation.valid) {

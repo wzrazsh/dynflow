@@ -200,6 +200,11 @@ function agent(name, promptOrConfig) {
       ),
     };
 
+    // Note: `workspace` is supplied at the API request layer (validated by
+    // WorkflowDefinitionSchema) and merged into the definition by the API
+    // handler before persistence. The sandbox does not need to know about
+    // workspace — it only extracts phases/agents.
+
     // Validate with shared schema
     const validation = validateWorkflowDefinition(definition);
     if (!validation.valid) {

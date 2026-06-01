@@ -87,8 +87,13 @@ packages/
 │       │   ├── phase-executor.ts   # Parallel agent orchestration
 │       │   └── runtime.ts         # Full workflow runtime
 │       ├── runner/
-│       │   ├── types.ts           # AgentRunner interface
-│       │   └── docker-runner.ts   # OpenAI API implementation
+│       │   ├── types.ts              # AgentRunner interface
+│       │   ├── cua-runner.ts         # Cua sandbox + Pi (default)
+│       │   ├── docker-runner.ts      # Legacy OpenAI-only Docker agent
+│       │   ├── wsl-docker-runner.ts  # WSL variant of legacy
+│       │   ├── pi-output-parser.ts   # Parse Pi JSONL output
+│       │   ├── workspace-scanner.ts  # List changed files in workspace
+│       │   └── prompt-builder.ts     # Wrap user prompt w/ workspace context
 │       ├── db/
 │       │   ├── connection.ts      # SQLite connection + retry
 │       │   ├── schema.ts          # Table creation
@@ -111,10 +116,13 @@ packages/
 │       │   └── ErrorBoundary.tsx     # Error handler
 │       └── hooks/
 │           └── useSSE.ts        # SSE custom hook
-└── agent/
-    └── src/
-        ├── run.ts               # Agent execution script
-        └── Dockerfile           # Docker image (node:22-alpine)
+├── agent/                       # Legacy OpenAI-only Docker agent
+│   ├── run.ts
+│   └── Dockerfile (node:22-alpine)
+└── cua-agent/                   # Cua sandbox + Pi image (default)
+    ├── Dockerfile               # trycua/cua-xfce + @earendil-works/pi-coding-agent
+    ├── package.json
+    └── README.md
 ```
 
 ## Key Patterns

@@ -24,8 +24,12 @@ maintainer automation, workflow templates, and local-first orchestration.
 - Sequential phase execution with parallel agents inside each phase.
 - Pause, resume, stop, fail, and restart-aware workflow states.
 - SQLite persistence with WAL mode.
-- Docker-isolated agent execution.
-- OpenAI-compatible agent runner with configurable base URL and model.
+- Cua-sandboxed Pi agent: each workflow run gets a per-workflow shared
+  workspace (git-cloned or local path) mounted into a Cua Linux desktop
+  container; Pi runs as a CLI process inside the container and exchanges
+  JSONL events with the DynFlow server.
+- OpenAI-compatible legacy Docker agent runner is still available behind
+  `DYNFLOW_RUNNER=docker` for fallback.
 - Real-time workflow events over SSE.
 - React UI for creating workflows, browsing runs, templates, agents, and skills.
 - Meta-workflow APIs for scanning GitHub projects and registering discovered
@@ -35,17 +39,24 @@ maintainer automation, workflow templates, and local-first orchestration.
 
 ```text
 packages/
-|-- shared/   TypeScript types and validation schemas
-|-- server/   Express API, workflow runtime, SQLite repository, SSE, sandbox
-|-- web/      React + Vite single-page app
-`-- agent/    Container entrypoint for executing one agent task
+|-- shared/     TypeScript types and validation schemas
+|-- server/     Express API, workflow runtime, SQLite repository, SSE, sandbox
+|-- web/        React + Vite single-page app
+|-- agent/      Legacy: container entrypoint for OpenAI-only Docker agent
+`-- cua-agent/  Cua + Pi Docker image (built from trycua/cua-xfce + @earendil-works/pi-coding-agent)
 ```
 
 Runtime flow:
 
 ```text
 workflow script -> sandbox parser -> validated definition -> SQLite run
-  -> runtime phases -> Docker agent runner -> SSE progress events -> web UI
+  -> runtime phases
+    -> CuaAgentRunner (default)
+       -> docker run dynflow-cua-pi:latest
+       -> mount per-workflow workspace into /home/cua/workspace
+       -> docker exec pi --mode json --no-session
+       -> parse JSONL, scan workspace for files
+  -> SSE progress events -> web UI
 ```
 
 ## Requirements
@@ -92,15 +103,44 @@ workflow("release-check", () => {
 Copy `.env.example` to `.env` and set credentials for agent execution:
 
 ```env
-OPENCODE_API_KEY=your_opencode_api_key_here
-OPENAI_BASE_URL=https://opencode.ai/zen/v1
-OPENCODE_MODEL=mimo-v2.5-free
+# Cua + Pi agent (default runner)
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Runner selection (default: cua)
+DYNFLOW_RUNNER=cua
+
+# Cua image (when DYNFLOW_RUNNER=cua)
+DYNFLOW_CUA_IMAGE=dynflow-cua-pi:latest
+
+# Server
 PORT=3001
 DB_PATH=./data/workflows.db
 ```
 
-`OPENAI_API_KEY` is also supported for compatibility, but `OPENCODE_API_KEY`
-takes precedence.
+`OPENAI_API_KEY` is also supported for compatibility. The legacy OpenAI-only
+Docker agent is still available by setting `DYNFLOW_RUNNER=docker`.
+
+## Building the Cua image
+
+```bash
+cd packages/cua-agent
+npm run build:image   # → tagged as dynflow-cua-pi:latest
+```
+
+## Workspace support
+
+A workflow can declare a `workspace` (host directory or git URL) that is
+mounted into the Cua container at `/home/cua/workspace`. All agents in a
+run share the same workspace; changes persist after the run completes.
+
+```json
+{
+  "name": "release-check",
+  "workspace": { "git": "https://github.com/foo/bar", "branch": "main" },
+  "script": "workflow(...)"
+}
+```
 
 ## Development Commands
 

@@ -1,6 +1,6 @@
 # CUA + Pi Agent Runner 设计文档
 
-**状态**: Draft (待用户审阅)
+**状态**: Implemented (2026-06-01) — Phases A–G done; Phases D/F (image build, integration test) require Docker at runtime
 **日期**: 2026-06-01
 **作者**: Sisyphus (via opencode brainstorming)
 

@@ -14,6 +14,7 @@ import ImportExport from './components/ImportExport';
 import MetaWorkflow from './components/MetaWorkflow';
 import ProjectList from './components/ProjectList';
 import ProjectDetail from './components/ProjectDetail';
+import Layout from './components/Layout';
 import type { WorkflowTemplate } from '@dynflow/shared';
 
 export type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta' | 'projects' | 'project-detail';
@@ -47,115 +48,21 @@ export default function App() {
     setToast(null);
   }, []);
 
+  const handleNavigate = useCallback((v: View) => {
+    setView(v);
+  }, []);
+
   return (
     <ErrorBoundary>
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: 20 }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 20 }}>
-          DynFlow
-        </h1>
-
+      <Layout currentView={view} onNavigate={handleNavigate}>
         {view === 'list' && (
-          <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <button
-                onClick={() => setView('agents')}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Browse Agents
-              </button>
-              <button
-                onClick={() => setView('skills')}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Browse Skills
-              </button>
-              <button
-                onClick={() => setView('create')}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                + New Workflow
-              </button>
-              <button
-                onClick={() => setView('templates')}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#10b981',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Templates
-              </button>
-              <button
-                onClick={() => setView('meta')}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#8b5cf6',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Import from GitHub
-              </button>
-              <button
-                onClick={() => setView('projects')}
-                style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#0891b2',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Projects
-              </button>
-            </div>
-            <WorkflowList
-              onSelect={(id) => {
-                setSelectedId(id);
-                setView('detail');
-              }}
-              onError={showError}
-            />
-          </>
+          <WorkflowList
+            onSelect={(id) => {
+              setSelectedId(id);
+              setView('detail');
+            }}
+            onError={showError}
+          />
         )}
 
         {view === 'create' && (
@@ -180,67 +87,22 @@ export default function App() {
         )}
 
         {view === 'agents' && (
-          <>
-            <button
-              onClick={() => setView('list')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#3b82f6',
-                cursor: 'pointer',
-                padding: 0,
-                marginBottom: 16,
-                fontSize: '0.875rem',
-              }}
-            >
-              &larr; Back to list
-            </button>
-            <AgentPicker
-              selectedAgents={selectedAgents}
-              onSelectionChange={setSelectedAgents}
-            />
-          </>
+          <AgentPicker
+            selectedAgents={selectedAgents}
+            onSelectionChange={setSelectedAgents}
+          />
         )}
 
         {view === 'skills' && (
-          <>
-            <button
-              onClick={() => setView('list')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#3b82f6',
-                cursor: 'pointer',
-                padding: 0,
-                marginBottom: 16,
-                fontSize: '0.875rem',
-              }}
-            >
-              &larr; Back to list
-            </button>
-            <SkillPicker
-              selectedSkills={selectedSkills}
-              onSelectionChange={setSelectedSkills}
-            />
-          </>
+          <SkillPicker
+            selectedSkills={selectedSkills}
+            onSelectionChange={setSelectedSkills}
+          />
         )}
 
         {view === 'templates' && (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-              <button
-                onClick={() => setView('list')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#3b82f6',
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontSize: '0.875rem',
-                }}
-              >
-                &larr; Back to list
-              </button>
               <button
                 onClick={() => {
                   setTemplateToEdit(undefined);
@@ -330,7 +192,7 @@ export default function App() {
                 setTemplateListKey((k) => k + 1);
               }}
             />
-            
+
             {/* Additional Actions */}
             <div style={{ display: 'flex', gap: 8, marginTop: 16, marginBottom: 16 }}>
               <button
@@ -416,29 +278,13 @@ export default function App() {
         )}
 
         {view === 'projects' && (
-          <>
-            <button
-              onClick={() => setView('list')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#3b82f6',
-                cursor: 'pointer',
-                padding: 0,
-                marginBottom: 16,
-                fontSize: '0.875rem',
-              }}
-            >
-              &larr; Back to list
-            </button>
-            <ProjectList
-              onSelect={(name) => {
-                setSelectedProjectName(name);
-                setView('project-detail');
-              }}
-              onError={showError}
-            />
-          </>
+          <ProjectList
+            onSelect={(name) => {
+              setSelectedProjectName(name);
+              setView('project-detail');
+            }}
+            onError={showError}
+          />
         )}
 
         {view === 'project-detail' && selectedProjectName && (
@@ -475,7 +321,7 @@ export default function App() {
             onClose={clearToast}
           />
         )}
-      </div>
+      </Layout>
     </ErrorBoundary>
   );
 }

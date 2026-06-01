@@ -1,10 +1,24 @@
+import type { WorkspaceConfig } from '@dynflow/shared';
+
 export interface AgentRunConfig {
   agentId: string;
   prompt: string;
-  model: string;
+  model?: string;
   timeoutMs: number;
-  openaiApiKey: string;
-  outputDir?: string;
+  /** Legacy field, kept for DockerAgentRunner. */
+  openaiApiKey?: string;
+
+  // === Cua + Pi fields ===
+  /** Absolute path on host to the shared workspace directory. */
+  workspacePath: string;
+  /** Container-internal mount point (default: '/home/cua/workspace'). */
+  workspaceMount: string;
+  /** Workspace config (used at run start to git clone / verify path). */
+  workspaceConfig?: WorkspaceConfig;
+  /** noVNC URL returned by Cua SDK after sandbox start. */
+  noVncUrl?: string;
+  /** Cua computer-server API URL. */
+  cuaApiUrl?: string;
 }
 
 export interface AgentResult {
@@ -16,6 +30,11 @@ export interface AgentResult {
   fileCount?: number;
   totalSize?: number;
   outputDir?: string;
+
+  // === Cua fields ===
+  noVncUrl?: string;
+  cuaApiUrl?: string;
+  screenshotPaths?: string[];
 }
 
 export interface AgentRunner {

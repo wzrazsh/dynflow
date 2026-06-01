@@ -33,8 +33,8 @@ export class DockerAgentRunner implements AgentRunner {
       };
     }
     let volumeArg = '';
-    if (config.outputDir) {
-      volumeArg = `--volume "${config.outputDir}:/app/output" `;
+    if (config.workspacePath) {
+      volumeArg = `--volume "${config.workspacePath}:/app/output" `;
     }
     const runCmd =
       `docker run --rm -d --memory=512m --cpus=1 --stop-timeout=10 --label dynflow=true ` +

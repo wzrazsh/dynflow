@@ -152,7 +152,7 @@ export class PhaseExecutor {
   // Private helpers
   // -----------------------------------------------------------------------
 
-  private async runAgent(agent: AgentRun, apiKey: string, outputDir?: string): Promise<AgentResult> {
+  private async runAgent(agent: AgentRun, apiKey: string, workspacePath?: string): Promise<AgentResult> {
     const startedAt = new Date().toISOString();
     const maxRetries = 3;
 
@@ -164,7 +164,8 @@ export class PhaseExecutor {
           model: agent.model ?? 'gpt-4o',
           timeoutMs: agent.timeoutMs ?? 300_000,
           openaiApiKey: apiKey,
-          outputDir,
+          workspacePath: workspacePath ?? '',
+          workspaceMount: '/app/output',
         };
         const result = await this.runner.run(config);
         const completedAt = new Date().toISOString();

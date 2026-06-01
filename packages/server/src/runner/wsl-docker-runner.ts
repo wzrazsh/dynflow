@@ -104,8 +104,8 @@ export class WslDockerAgentRunner implements AgentRunner {
     // Determine output directory
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runOutputDir: string;
-    if (config.outputDir) {
-      runOutputDir = config.outputDir;
+    if (config.workspacePath) {
+      runOutputDir = config.workspacePath;
     } else {
       runOutputDir = join(this.outputDir, runId);
     }

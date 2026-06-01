@@ -40,6 +40,8 @@ function makeConfig(overrides: Partial<AgentRunConfig> = {}): AgentRunConfig {
     model: 'gpt-4',
     timeoutMs: 30000,
     openaiApiKey: 'sk-test-key',
+    workspacePath: '/tmp/workspace',
+    workspaceMount: '/app/output',
     ...overrides,
   };
 }

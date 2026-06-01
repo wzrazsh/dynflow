@@ -670,3 +670,36 @@ describe('agent-skill association CRUD', () => {
     expect(repo.getAgentSkills(agent.id)).toHaveLength(0);
   });
 });
+
+describe('createWorkflowRun — template link', () => {
+  it('35 — without opts, run has no templateId / templateVersion (inline-script path)', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Inline');
+    expect(run.templateId).toBeUndefined();
+    expect(run.templateVersion).toBeUndefined();
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.templateId).toBeUndefined();
+    expect(fetched!.templateVersion).toBeUndefined();
+  });
+
+  it('36 — with opts, run round-trips templateId + templateVersion', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'FromTemplate', {
+      templateId: 'tpl-abc',
+      templateVersion: 3,
+    });
+    expect(run.templateId).toBe('tpl-abc');
+    expect(run.templateVersion).toBe(3);
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.templateId).toBe('tpl-abc');
+    expect(fetched!.templateVersion).toBe(3);
+  });
+
+  it('37 — with only templateId, templateVersion is undefined', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'FromTemplate', {
+      templateId: 'tpl-abc',
+    });
+    expect(run.templateId).toBe('tpl-abc');
+    expect(run.templateVersion).toBeUndefined();
+  });
+});

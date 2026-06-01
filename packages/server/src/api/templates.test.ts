@@ -527,3 +527,59 @@ describe('Soft delete (deleted_at marker)', () => {
     expect(res.body.data.id).toBe(t.id);
   });
 });
+
+describe('POST /api/templates/:id/run — template link on workflow_runs', () => {
+  it('32 — writes templateId + templateVersion matching the template (v1)', async () => {
+    const t = templateRepo.createTemplate({ name: 'LinkedRun', script: VALID_SCRIPT });
+    // Bump the version history once so the template is at v1 with a version row.
+    templateRepo.createVersion(t.id, { script: VALID_SCRIPT, name: 'LinkedRun' });
+    const fresh = templateRepo.getTemplate(t.id)!;
+    expect(fresh.currentVersion).toBe(1);
+
+    const app = createApp();
+    const res = await request(app).post(`/api/templates/${t.id}/run`).send({});
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.templateId).toBe(t.id);
+    expect(res.body.data.templateVersion).toBe(1);
+  });
+
+  it('33 — re-running after a version bump records the new version, not the old one', async () => {
+    const t = templateRepo.createTemplate({ name: 'Versioned', script: VALID_SCRIPT });
+    // Pre-create v1 so the next createVersion call is v2.
+    templateRepo.createVersion(t.id, { script: VALID_SCRIPT, name: 'Versioned' });
+    const app = createApp();
+
+    // First run at v1
+    const first = await request(app).post(`/api/templates/${t.id}/run`).send({});
+    expect(first.status).toBe(201);
+    expect(first.body.data.templateVersion).toBe(1);
+
+    // Bump the template to v2 by creating a new version row.
+    templateRepo.createVersion(t.id, { script: VALID_SCRIPT, name: 'Versioned' });
+    const fresh = templateRepo.getTemplate(t.id)!;
+    expect(fresh.currentVersion).toBe(2);
+
+    // Second run should record v2
+    const second = await request(app).post(`/api/templates/${t.id}/run`).send({});
+    expect(second.status).toBe(201);
+    expect(second.body.data.templateVersion).toBe(2);
+    expect(second.body.data.id).not.toBe(first.body.data.id);
+  });
+
+  it('34 — link is persisted in the workflow_runs row (DB-level)', async () => {
+    const t = templateRepo.createTemplate({ name: 'Persisted', script: VALID_SCRIPT });
+    const app = createApp();
+    const res = await request(app).post(`/api/templates/${t.id}/run`).send({});
+    expect(res.status).toBe(201);
+    const runId = res.body.data.id;
+
+    const { getDb } = await import('../db/connection.js');
+    const db = getDb();
+    const row = db
+      .prepare('SELECT template_id, template_version FROM workflow_runs WHERE id = ?')
+      .get(runId) as { template_id: string | null; template_version: number | null };
+    expect(row.template_id).toBe(t.id);
+    expect(row.template_version).toBe(1);
+  });
+});

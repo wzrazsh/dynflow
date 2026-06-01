@@ -26,10 +26,16 @@ import type {
  * Create a new workflow run from a definition.
  * Inserts the workflow row, creates phases and agent runs,
  * then returns the fully assembled tree.
+ *
+ * If `opts.templateId` is provided, the run is linked back to the source
+ * template (and its `currentVersion` at the time of creation) so the
+ * connection survives in the DB and can be surfaced in the UI.
+ * Inline-script runs (POST /api/workflows) leave these columns NULL.
  */
 export function createWorkflowRun(
   definition: WorkflowDefinition,
   name: string,
+  opts?: { templateId?: string; templateVersion?: number },
 ): WorkflowRun {
   const db = getDb();
   const id = uuidv4();
@@ -37,9 +43,17 @@ export function createWorkflowRun(
 
   withRetry(() =>
     db.prepare(
-      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
-       VALUES (?, ?, 'pending', ?, ?, ?)`,
-    ).run(id, name, JSON.stringify(definition), now, now),
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id, template_version)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      name,
+      JSON.stringify(definition),
+      now,
+      now,
+      opts?.templateId ?? null,
+      opts?.templateVersion ?? null,
+    ),
   );
 
   getOrCreatePhases(id, definition.phases);
@@ -93,6 +107,11 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
     phases: phaseRuns,
     createdAt: workflow.created_at as string,
     updatedAt: workflow.updated_at as string,
+    templateId: (workflow.template_id as string | null) ?? undefined,
+    templateVersion:
+      workflow.template_version === null || workflow.template_version === undefined
+        ? undefined
+        : (workflow.template_version as number),
   };
 }
 

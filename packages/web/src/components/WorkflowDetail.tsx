@@ -7,11 +7,23 @@ import StatusBadge from './StatusBadge';
 interface WorkflowDetailProps {
   workflowId: string;
   onBack: () => void;
+  /**
+   * Optional callback fired when the user clicks the "Source: template v<n>"
+   * pill on a workflow run that was created from a template. The parent
+   * (App) wires this to switch the view to the template detail screen.
+   * If omitted, the pill falls back to a plain `href` so the link still
+   * works for future routing changes.
+   */
+  onNavigateToTemplate?: (templateId: string) => void;
 }
 
 const POLL_INTERVAL = 3000;
 
-export default function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
+export default function WorkflowDetail({
+  workflowId,
+  onBack,
+  onNavigateToTemplate,
+}: WorkflowDetailProps) {
   const [workflow, setWorkflow] = useState<WorkflowRun | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +182,31 @@ export default function WorkflowDetail({ workflowId, onBack }: WorkflowDetailPro
       >
         <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>{workflow.name}</h2>
         <StatusBadge status={workflow.status} />
+        {workflow.templateId && (
+          <a
+            href={`/templates/${workflow.templateId}`}
+            onClick={(e) => {
+              if (onNavigateToTemplate) {
+                e.preventDefault();
+                onNavigateToTemplate(workflow.templateId!);
+              }
+            }}
+            style={{
+              fontSize: '0.75rem',
+              color: '#1d4ed8',
+              textDecoration: 'none',
+              border: '1px solid #bfdbfe',
+              backgroundColor: '#eff6ff',
+              borderRadius: 10,
+              padding: '1px 8px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+            title="Open the source template"
+          >
+            Source: template v{workflow.templateVersion ?? '?'}
+          </a>
+        )}
         {workflowForSSE && (
           <span
             style={{

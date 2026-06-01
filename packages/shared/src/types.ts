@@ -32,6 +32,10 @@ export interface WorkflowRun {
   phases: PhaseRun[];
   createdAt: string;
   updatedAt: string;
+  /** Set when this run was created from a template via POST /templates/:id/run. */
+  templateId?: string;
+  /** The template version that was active when the run was created. */
+  templateVersion?: number;
 }
 
 export interface PhaseRun {

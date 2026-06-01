@@ -378,8 +378,13 @@ router.post('/:id/run', async (req, res) => {
       });
     }
 
-    // Create the workflow run
-    const run = repo.createWorkflowRun(result.definition, template.name);
+    // Create the workflow run, linking it back to the source template +
+    // its current version so the connection survives in the DB and can be
+    // surfaced in the UI (see WorkflowDetail "Source: ... v<n>" pill).
+    const run = repo.createWorkflowRun(result.definition, template.name, {
+      templateId: template.id,
+      templateVersion: template.currentVersion,
+    });
     return res.status(201).json({ success: true, data: run });
   } catch (error) {
     return res.status(500).json({ success: false, error: String(error) });

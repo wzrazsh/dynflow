@@ -72,6 +72,40 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: 'add-workflow-run-template-link',
+    up: (db) => {
+      // Add template_id + template_version to workflow_runs so we can trace
+      // any run created from a template back to the exact template + version
+      // that produced it. Both columns are nullable: runs created via the
+      // inline-script endpoint (POST /api/workflows) keep NULL.
+      const cols = db
+        .prepare('PRAGMA table_info(workflow_runs)')
+        .all() as Array<{ name: string }>;
+      const names = new Set(cols.map((c) => c.name));
+      if (!names.has('template_id')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN template_id TEXT');
+      }
+      if (!names.has('template_version')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN template_version INTEGER');
+      }
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_workflow_runs_template_id ON workflow_runs(template_id)',
+      );
+    },
+    down: (db) => {
+      // SQLite < 3.35 has no DROP COLUMN — rebuild the table without the
+      // two new columns. Any non-NULL data is lost on rollback.
+      db.exec(`
+        CREATE TABLE workflow_runs_backup AS
+          SELECT id, name, status, definition_json, created_at, updated_at
+          FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_backup RENAME TO workflow_runs;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

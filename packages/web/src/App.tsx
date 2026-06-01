@@ -172,6 +172,10 @@ export default function App() {
           <WorkflowDetail
             workflowId={selectedId}
             onBack={() => setView('list')}
+            onNavigateToTemplate={(templateId) => {
+              setSelectedTemplateId(templateId);
+              setView('template-detail');
+            }}
           />
         )}
 

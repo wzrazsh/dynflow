@@ -19,8 +19,14 @@ export function initSchema(): void {
       status TEXT NOT NULL DEFAULT 'pending',
       definition_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      template_id TEXT,
+      template_version INTEGER
     );
+    -- Note: the idx_workflow_runs_template_id index is created in
+    -- migration v3 so that older databases (where the template_id column
+    -- doesn't exist yet) don't hit "no such column" on a CREATE INDEX.
+    -- For fresh installs the migration still runs and creates the index.
 
     CREATE TABLE IF NOT EXISTS phase_runs (
       id TEXT PRIMARY KEY,

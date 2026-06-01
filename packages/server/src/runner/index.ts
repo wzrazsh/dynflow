@@ -1,39 +1,57 @@
 import { DockerAgentRunner } from './docker-runner.js';
 import { WslDockerAgentRunner } from './wsl-docker-runner.js';
+import { CuaAgentRunner } from './cua-runner.js';
 import type { AgentRunner } from './types.js';
 import { logger } from '../logger.js';
 
 /**
- * Get the appropriate Docker agent runner based on availability.
- * 
- * Priority:
- * 1. WSL Docker (if WSL is available and Docker is running in WSL)
- * 2. Native Docker (if Docker is available on Windows)
- * 3. Throws error if neither is available
+ * Get the appropriate agent runner.
+ *
+ * Selection via env var `DYNFLOW_RUNNER`:
+ *   - 'cua' (default): CuaAgentRunner — runs Pi inside a Cua-based Docker
+ *     sandbox image (`dynflow-cua-pi:latest` or `trycua/cua-xfce`).
+ *   - 'docker': legacy DockerAgentRunner / WslDockerAgentRunner — the
+ *     pre-Cua OpenAI-only runner.
+ *
+ * Backward compatibility: if `DYNFLOW_RUNNER` is unset, we default to
+ * 'cua' but fall back to 'docker' if Cua's image is not present.
  */
 export function createAgentRunner(): AgentRunner {
+  const explicit = process.env.DYNFLOW_RUNNER;
+  if (explicit === 'docker') {
+    logger.info('Runner: docker (legacy, DYNFLOW_RUNNER=docker)');
+    return selectDockerRunner();
+  }
+  if (explicit === 'cua') {
+    logger.info('Runner: cua (default)');
+    return new CuaAgentRunner();
+  }
+  // Unset or unknown — try cua first, fall back to docker.
+  if (CuaAgentRunner.isAvailable()) {
+    logger.info('Runner: cua (auto-selected)');
+    return new CuaAgentRunner();
+  }
+  logger.warn('Runner: cua unavailable, falling back to docker');
+  return selectDockerRunner();
+}
+
+/**
+ * Pick the best legacy Docker runner (WSL preferred on Windows).
+ */
+function selectDockerRunner(): AgentRunner {
   logger.info('Checking Docker availability...');
-  
-  // Check WSL Docker first (preferred for Windows)
   const wslAvailable = WslDockerAgentRunner.isAvailable();
   logger.info(`WSL Docker available: ${wslAvailable}`);
-  
   if (wslAvailable) {
     logger.info('Using Docker via WSL');
     return new WslDockerAgentRunner();
   }
-
-  // Fall back to native Docker
   const nativeAvailable = DockerAgentRunner.isAvailable();
   logger.info(`Native Docker available: ${nativeAvailable}`);
-  
   if (nativeAvailable) {
     logger.info('Using native Docker');
     return new DockerAgentRunner();
   }
-
-  // No Docker available
-  logger.error('No Docker runtime available');
   throw new Error(
     'Docker is not available. Please start Docker Desktop with WSL integration enabled.',
   );
@@ -48,6 +66,8 @@ export function isDockerAvailable(): boolean {
 
 /**
  * Clean up orphaned dynflow containers from all available Docker runtimes.
+ * (Both legacy Docker and Cua-based images use the `dynflow` label, so a
+ * single sweep handles both.)
  */
 export async function cleanupContainers(): Promise<void> {
   const runners: AgentRunner[] = [];

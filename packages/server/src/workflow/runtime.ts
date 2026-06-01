@@ -77,7 +77,13 @@ export class WorkflowRuntime {
     const workflowRun = repo.getWorkflowRun(workflowRunId);
     if (!workflowRun) throw new Error('Workflow not found');
 
-    const { projectName, version, outputDir } = executeOpts ?? {};
+    const { projectName, version, outputDir: legacyOutputDir } = executeOpts ?? {};
+
+    // 1a. Resolve the shared workspace path. If the workflow's definition
+    // includes a workspace, its host path is stored on the workflow run
+    // (set when the run was created in the API layer). Otherwise fall back
+    // to the legacy `outputDir` (from project/version) for backward compat.
+    const workspacePath = workflowRun.workspacePath ?? legacyOutputDir ?? '';
 
     // 2. Transition to running
     repo.updateWorkflowStatus(workflowRunId, 'running');
@@ -150,7 +156,12 @@ export class WorkflowRuntime {
       const agents = repo.getPhaseAgents(phase.id);
       const maxConcurrency = 16;
 
-      const phaseResult = await executor.execute(agents, openaiApiKey, maxConcurrency, outputDir);
+      const phaseResult = await executor.execute(
+        agents,
+        openaiApiKey,
+        maxConcurrency,
+        workspacePath,
+      );
 
       // Process agent results
       for (const agentResult of phaseResult.agentResults) {
@@ -176,6 +187,9 @@ export class WorkflowRuntime {
               }
             : undefined;
 
+          const noVncUrl = agentResult.noVncUrl;
+          const cuaApiUrl = agentResult.cuaApiUrl;
+
           repo.updateAgentStatus(agent.id, 'completed', {
             output: truncated,
             ...(hasFiles
@@ -185,6 +199,12 @@ export class WorkflowRuntime {
                   totalSize: agentResult.totalSize,
                   outputDir: agentResult.outputDir,
                 }
+              : {}),
+            ...(agentResult.noVncUrl
+              ? { noVncUrl: agentResult.noVncUrl }
+              : {}),
+            ...(agentResult.cuaApiUrl
+              ? { cuaApiUrl: agentResult.cuaApiUrl }
               : {}),
           });
           this.streamManager.emit(

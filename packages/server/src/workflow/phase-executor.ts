@@ -17,6 +17,8 @@ export interface AgentResult {
   fileCount?: number;
   totalSize?: number;
   outputDir?: string;
+  noVncUrl?: string;
+  cuaApiUrl?: string;
 }
 
 export type PhaseStatus = 'completed' | 'completed_with_errors';
@@ -184,6 +186,8 @@ export class PhaseExecutor {
             fileCount: result.fileCount,
             totalSize: result.totalSize,
             outputDir: result.outputDir,
+            noVncUrl: result.noVncUrl,
+            cuaApiUrl: result.cuaApiUrl,
           };
         }
 

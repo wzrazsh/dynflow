@@ -422,3 +422,108 @@ describe('GET /api/templates/:id/versions', () => {
     expect(res.body.error).toBe('Template not found');
   });
 });
+
+describe('Soft delete (deleted_at marker)', () => {
+  it('24 — soft-deleted template is excluded from list and total decrements', async () => {
+    const t1 = templateRepo.createTemplate({ name: 'Keep', script: VALID_SCRIPT });
+    const t2 = templateRepo.createTemplate({ name: 'Drop', script: VALID_SCRIPT });
+
+    const app = createApp();
+    const before = await request(app).get('/api/templates');
+    expect(before.body.data).toHaveLength(2);
+    expect(before.body.total).toBe(2);
+
+    await request(app).delete(`/api/templates/${t2.id}`).expect(204);
+
+    const after = await request(app).get('/api/templates');
+    expect(after.body.data).toHaveLength(1);
+    expect(after.body.total).toBe(1);
+    expect(after.body.data[0].id).toBe(t1.id);
+  });
+
+  it('25 — soft-deleted template returns 404 on single GET', async () => {
+    const t = templateRepo.createTemplate({ name: 'Vanish', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    const res = await request(app).get(`/api/templates/${t.id}`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Template not found');
+  });
+
+  it('26 — soft-deleted template returns 404 on PUT', async () => {
+    const t = templateRepo.createTemplate({ name: 'Ghost', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    const res = await request(app)
+      .put(`/api/templates/${t.id}`)
+      .send({ name: 'Resurrect' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Template not found');
+  });
+
+  it('27 — soft-deleted template returns 404 on POST /run', async () => {
+    const t = templateRepo.createTemplate({ name: 'NoRun', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    const res = await request(app).post(`/api/templates/${t.id}/run`).send({});
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Template not found');
+  });
+
+  it('28 — soft-deleted template returns 404 on versions endpoint', async () => {
+    const t = templateRepo.createTemplate({ name: 'NoVersions', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    const res = await request(app).get(`/api/templates/${t.id}/versions`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Template not found');
+  });
+
+  it('29 — re-deleting a soft-deleted template returns 404', async () => {
+    const t = templateRepo.createTemplate({ name: 'Once', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    const second = await request(app).delete(`/api/templates/${t.id}`);
+    expect(second.status).toBe(404);
+    expect(second.body.error).toBe('Template not found');
+  });
+
+  it('30 — soft delete preserves the row in the database (deleted_at set)', async () => {
+    const t = templateRepo.createTemplate({ name: 'Preserved', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    // The row must still be present in the raw table, just with deleted_at populated.
+    const { getDb } = await import('../db/connection.js');
+    const db = getDb();
+    const row = db
+      .prepare('SELECT id, name, deleted_at FROM workflow_templates WHERE id = ?')
+      .get(t.id) as { id: string; name: string; deleted_at: string | null };
+    expect(row).toBeDefined();
+    expect(row.id).toBe(t.id);
+    expect(row.name).toBe('Preserved');
+    expect(row.deleted_at).not.toBeNull();
+    expect(typeof row.deleted_at).toBe('string');
+  });
+
+  it('31 — soft delete is reversible by clearing deleted_at (manual DB recovery)', async () => {
+    const t = templateRepo.createTemplate({ name: 'Recoverable', script: VALID_SCRIPT });
+    const app = createApp();
+    await request(app).delete(`/api/templates/${t.id}`).expect(204);
+
+    // Simulate manual restoration: clear deleted_at directly in the DB.
+    const { getDb } = await import('../db/connection.js');
+    const db = getDb();
+    db.prepare('UPDATE workflow_templates SET deleted_at = NULL WHERE id = ?').run(t.id);
+
+    // Template is reachable again through the API.
+    const res = await request(app).get(`/api/templates/${t.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe(t.id);
+  });
+});

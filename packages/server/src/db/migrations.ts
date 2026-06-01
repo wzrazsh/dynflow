@@ -46,6 +46,32 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'add-template-soft-delete',
+    up: (db) => {
+      // Defensive: skip if column already exists (e.g. dev environment reset).
+      const cols = db
+        .prepare('PRAGMA table_info(workflow_templates)')
+        .all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'deleted_at')) {
+        db.exec('ALTER TABLE workflow_templates ADD COLUMN deleted_at TEXT');
+      }
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_workflow_templates_deleted_at ON workflow_templates(deleted_at)',
+      );
+    },
+    down: (db) => {
+      // SQLite < 3.35 has no DROP COLUMN — rebuild table to drop the column.
+      db.exec(`
+        CREATE TABLE workflow_templates_backup AS
+          SELECT id, name, description, script, current_version, created_at, updated_at
+          FROM workflow_templates;
+        DROP TABLE workflow_templates;
+        ALTER TABLE workflow_templates_backup RENAME TO workflow_templates;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

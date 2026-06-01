@@ -80,12 +80,14 @@ export function createTemplate(
 
 /**
  * Retrieve a single template by ID with its tags.
- * Returns `undefined` if the ID does not exist.
+ * Returns `undefined` if the ID does not exist or has been soft-deleted.
  */
 export function getTemplate(id: string): WorkflowTemplate | undefined {
   const db = getDb();
   const row = withRetry(() =>
-    db.prepare('SELECT * FROM workflow_templates WHERE id = ?').get(id),
+    db
+      .prepare('SELECT * FROM workflow_templates WHERE id = ? AND deleted_at IS NULL')
+      .get(id),
   ) as Record<string, unknown> | undefined;
   if (!row) return undefined;
 
@@ -97,6 +99,7 @@ export function getTemplate(id: string): WorkflowTemplate | undefined {
  * List templates with pagination and optional tag filtering.
  * Returns `{ items, total }` where items are the requested page of templates.
  * When `tag` is provided, only templates with that tag are returned.
+ * Soft-deleted templates (deleted_at IS NOT NULL) are excluded.
  */
 export function getTemplates(
   page: number,
@@ -112,7 +115,7 @@ export function getTemplates(
     const countRow = withRetry(() =>
       db
         .prepare(
-          'SELECT COUNT(DISTINCT t.id) as count FROM workflow_templates t INNER JOIN workflow_template_tags tt ON t.id = tt.template_id WHERE tt.tag = ?',
+          'SELECT COUNT(DISTINCT t.id) as count FROM workflow_templates t INNER JOIN workflow_template_tags tt ON t.id = tt.template_id WHERE tt.tag = ? AND t.deleted_at IS NULL',
         )
         .get(tag),
     ) as { count: number };
@@ -122,13 +125,15 @@ export function getTemplates(
     rows = withRetry(() =>
       db
         .prepare(
-          'SELECT DISTINCT t.* FROM workflow_templates t INNER JOIN workflow_template_tags tt ON t.id = tt.template_id WHERE tt.tag = ? ORDER BY t.name ASC LIMIT ? OFFSET ?',
+          'SELECT DISTINCT t.* FROM workflow_templates t INNER JOIN workflow_template_tags tt ON t.id = tt.template_id WHERE tt.tag = ? AND t.deleted_at IS NULL ORDER BY t.name ASC LIMIT ? OFFSET ?',
         )
         .all(tag, pageSize, offset),
     ) as Record<string, unknown>[];
   } else {
     const countRow = withRetry(() =>
-      db.prepare('SELECT COUNT(*) as count FROM workflow_templates').get(),
+      db
+        .prepare('SELECT COUNT(*) as count FROM workflow_templates WHERE deleted_at IS NULL')
+        .get(),
     ) as { count: number };
     total = countRow.count;
 
@@ -136,7 +141,7 @@ export function getTemplates(
     rows = withRetry(() =>
       db
         .prepare(
-          'SELECT * FROM workflow_templates ORDER BY name ASC LIMIT ? OFFSET ?',
+          'SELECT * FROM workflow_templates WHERE deleted_at IS NULL ORDER BY name ASC LIMIT ? OFFSET ?',
         )
         .all(pageSize, offset),
     ) as Record<string, unknown>[];
@@ -203,13 +208,26 @@ export function updateTemplate(
 }
 
 /**
- * Delete a template by ID.
- * Versions and tags are removed via CASCADE.
+ * Soft-delete a template by ID.
+ *
+ * Marks the row with `deleted_at = now` instead of physically removing it.
+ * Subsequent calls to {@link getTemplate} and {@link getTemplates} will
+ * exclude this row. Repeating the call on an already-deleted template is
+ * a no-op.
+ *
+ * Versions and tags remain in place but become unreachable through the
+ * template-level API. Hard deletion / restoration can be performed
+ * directly against the database if needed.
  */
 export function deleteTemplate(id: string): void {
   const db = getDb();
+  const now = new Date().toISOString();
   withRetry(() =>
-    db.prepare('DELETE FROM workflow_templates WHERE id = ?').run(id),
+    db
+      .prepare(
+        'UPDATE workflow_templates SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL',
+      )
+      .run(now, now, id),
   );
 }
 

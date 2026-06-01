@@ -104,8 +104,13 @@ export function initSchema(): void {
       script TEXT NOT NULL,
       current_version INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT
     );
+    -- Note: the idx_workflow_templates_deleted_at index is created in
+    -- migration v2 so that older databases (where the deleted_at column
+    -- doesn't exist yet) don't hit "no such column" on a CREATE INDEX.
+    -- For fresh installs the migration still runs and creates the index.
 
     CREATE TABLE IF NOT EXISTS workflow_template_versions (
       id TEXT PRIMARY KEY,

@@ -49,6 +49,12 @@ export interface WorkflowRun {
   templateId?: string;
   /** The template version that was active when the run was created. */
   templateVersion?: number;
+  /** Host path to the shared workspace directory for this run. */
+  workspacePath?: string;
+  /** Git URL the workspace was cloned from (if applicable). */
+  workspaceGitUrl?: string;
+  /** Git branch the workspace was checked out to. */
+  workspaceBranch?: string;
 }
 
 export interface PhaseRun {
@@ -74,6 +80,10 @@ export interface AgentRun {
   fileCount?: number;
   totalSize?: number;
   outputDir?: string;
+  /** noVNC URL (set when the agent ran in a Cua sandbox). */
+  noVncUrl?: string;
+  /** Cua computer-server API URL. */
+  cuaApiUrl?: string;
 }
 
 // Status enums as string unions

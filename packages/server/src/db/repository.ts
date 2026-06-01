@@ -43,8 +43,12 @@ export function createWorkflowRun(
 
   withRetry(() =>
     db.prepare(
-      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id, template_version)
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)`,
+      `INSERT INTO workflow_runs (
+         id, name, status, definition_json, created_at, updated_at,
+         template_id, template_version,
+         workspace_path, workspace_git_url, workspace_branch
+       )
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       name,
@@ -53,6 +57,9 @@ export function createWorkflowRun(
       now,
       opts?.templateId ?? null,
       opts?.templateVersion ?? null,
+      definition.workspace?.path ?? null,
+      definition.workspace?.git ?? null,
+      definition.workspace?.branch ?? null,
     ),
   );
 
@@ -112,6 +119,9 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
       workflow.template_version === null || workflow.template_version === undefined
         ? undefined
         : (workflow.template_version as number),
+    workspacePath: (workflow.workspace_path as string | null) ?? undefined,
+    workspaceGitUrl: (workflow.workspace_git_url as string | null) ?? undefined,
+    workspaceBranch: (workflow.workspace_branch as string | null) ?? undefined,
   };
 }
 
@@ -191,8 +201,8 @@ export function getOrCreatePhases(
   );
 
   const insertAgent = db.prepare(
-    `INSERT INTO agent_runs (id, phase_run_id, name, status, prompt, model, output, error, started_at, completed_at, docker_container_id)
-     VALUES (?, ?, ?, 'pending', ?, 'gpt-4o', NULL, NULL, NULL, NULL, NULL)`,
+    `INSERT INTO agent_runs (id, phase_run_id, name, status, prompt, model, output, error, started_at, completed_at, docker_container_id, no_vnc_url, cua_api_url)
+     VALUES (?, ?, ?, 'pending', ?, 'gpt-4o', NULL, NULL, NULL, NULL, NULL, NULL, NULL)`,
   );
 
   return phases.map((phaseDef, index) => {
@@ -284,6 +294,8 @@ export function updateAgentStatus(
     output?: string;
     error?: string;
     containerId?: string;
+    noVncUrl?: string;
+    cuaApiUrl?: string;
     files?: string[];
     fileCount?: number;
     totalSize?: number;
@@ -338,6 +350,14 @@ export function updateAgentStatus(
   if (opts?.containerId !== undefined) {
     setClauses.push('docker_container_id = ?');
     values.push(opts.containerId);
+  }
+  if (opts?.noVncUrl !== undefined) {
+    setClauses.push('no_vnc_url = ?');
+    values.push(opts.noVncUrl);
+  }
+  if (opts?.cuaApiUrl !== undefined) {
+    setClauses.push('cua_api_url = ?');
+    values.push(opts.cuaApiUrl);
   }
 
   values.push(id);
@@ -402,6 +422,8 @@ function rowToAgentRun(row: Record<string, unknown>): AgentRun {
     error: (row.error as string) ?? undefined,
     startedAt: (row.started_at as string) ?? undefined,
     completedAt: (row.completed_at as string) ?? undefined,
+    noVncUrl: (row.no_vnc_url as string | null) ?? undefined,
+    cuaApiUrl: (row.cua_api_url as string | null) ?? undefined,
   };
 }
 

@@ -21,7 +21,10 @@ export function initSchema(): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       template_id TEXT,
-      template_version INTEGER
+      template_version INTEGER,
+      workspace_path TEXT,
+      workspace_git_url TEXT,
+      workspace_branch TEXT
     );
     -- Note: the idx_workflow_runs_template_id index is created in
     -- migration v3 so that older databases (where the template_id column
@@ -49,7 +52,9 @@ export function initSchema(): void {
       error TEXT,
       started_at TEXT,
       completed_at TEXT,
-      docker_container_id TEXT
+      docker_container_id TEXT,
+      no_vnc_url TEXT,
+      cua_api_url TEXT
     );
 
     -- Registry tables for multi-agent orchestration

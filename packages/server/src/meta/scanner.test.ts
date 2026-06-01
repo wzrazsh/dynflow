@@ -3,6 +3,20 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(
+    (
+      _cmd: string,
+      _args: string[],
+      _opts: unknown,
+      callback: (err: Error | null) => void,
+    ) => {
+      callback(new Error('mock clone failure'));
+      return {};
+    },
+  ),
+}));
+
 import {
   isValidGithubUrl,
   extractProjectName,
@@ -340,43 +354,25 @@ describe('scanProject — URL validation', () => {
 
 describe('scanProject — clone failure', () => {
   it('31 — returns error when clone fails', async () => {
-    const { execFile } = await import('node:child_process');
-
-    // Wrap the original so we can restore after
-    const originalExecFile = execFile;
-    const mockExecFile = vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
-      cb(new Error('mock clone failure'));
+    const result = await scanProject('https://github.com/owner/repo', {
+      workspaceDir: tmpRoot,
     });
 
-    // Since we can't easily vi.mock at module scope after imports,
-    // we temporarily replace on the import cache.
-    // Instead, test the behavior by pointing to a directory that already exists
-    // — git clone will fail because the target is not empty.
-    // OR: use scanDirectory for clone-free testing and trust the wrapper.
-    // This test verifies the error-handling pathway through scanProject.
-    // We test this by relying on the fact that git clone to a non-existent
-    // remote will fail — but that requires network. Instead we verify
-    // that the function handles clone errors gracefully through its structure.
-    // For unit-test purity, we assert via scanDirectory + URL validation tests,
-    // and note that the clone wrapper delegates to execFile.
-    expect(true).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('mock clone failure');
+    expect(result.cleanedUp).toBe(true);
   });
 });
 
 describe('scanProject — cleanup behaviour', () => {
-  it('32 — returns cleanedUp=false when workspaceDir is unwritable', async () => {
-    // This is hard to test without actually exercising the file system.
-    // We verify the cleanup logic indirectly by scanning an invalid URL
-    // (which returns cleanedUp=true since no temp dir was created for the
-    // error path) and by the fact that scanDirectory always cleans up.
+  it('32 — cleans up temp dir after clone failure', async () => {
     const result = await scanProject('https://github.com/owner/repo', {
       workspaceDir: tmpRoot,
     });
-    // Will fail because we can't clone (no network), but the temp dir is
-    // created and then cleaned up — cleanedUp should still be true.
+
     expect(result.cleanedUp).toBe(true);
     expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.error).toContain('mock clone failure');
   });
 });
 

@@ -1,7 +1,20 @@
 // Core definition types
 export interface WorkflowDefinition {
   name: string;
+  /** Optional: prepare a workspace directory before agents run. */
+  workspace?: WorkspaceConfig;
   phases: PhaseDefinition[];
+}
+
+export interface WorkspaceConfig {
+  /** Git URL to clone into the workspace at run start. */
+  git?: string;
+  /** Branch to checkout (default: 'main'). */
+  branch?: string;
+  /** Local host path. If set, takes precedence over `git`. */
+  path?: string;
+  /** Pin to a specific git commit. */
+  commit?: string;
 }
 
 export interface WorkflowScript {

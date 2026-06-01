@@ -1,0 +1,83 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+.vite/
+
+# Runtime data
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DynFlow specific
+.sisyphus/
+.gstack/
+.omx/
+.codegraph/
+/outputs/
+
+# AI / IDE agent caches
+.trae/
+
+# Editor & OS backups
+*.bak
+*.bak.*
+*.orig
+*.rej
+*~
+
+# Local test / scratch files at repo root
+/verify.db
+/verify*.db
+*.db.bak
+ls-*.txt
+
+# Tool caches
+.cache/
+.eslintcache
+.stylelintcache
+.parcel-cache/
+.turbo/
+
+# Error logs
+*.err
+
+# Docker
+docker-compose.override.yml
+
+# Temp files
+*.tmp
+*.temp
+
+# Game artifacts
+mathquest.html

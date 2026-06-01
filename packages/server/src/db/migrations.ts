@@ -1,0 +1,230 @@
+import Database from 'better-sqlite3';
+import { getDb, withRetry } from './connection.js';
+import { logger } from '../logger.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface Migration {
+  version: number;
+  name: string;
+  up: (db: Database.Database) => void;
+  down: (db: Database.Database) => void;
+}
+
+export interface MigrationRecord {
+  version: number;
+  name: string;
+  applied_at: string;
+}
+
+export interface MigrationStatus {
+  version: number;
+  name: string;
+  applied: boolean;
+  applied_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Migration definitions
+// ---------------------------------------------------------------------------
+
+const migrations: Migration[] = [
+  {
+    version: 1,
+    name: 'create-workflow-templates',
+    up: () => {
+      // Tables already created by initSchema() (schema.ts).
+      // This migration records the baseline state for future schema changes.
+    },
+    down: (db) => {
+      db.exec(`
+        DROP TABLE IF EXISTS workflow_template_tags;
+        DROP TABLE IF EXISTS workflow_template_versions;
+        DROP TABLE IF EXISTS workflow_templates;
+      `);
+    },
+  },
+  {
+    version: 2,
+    name: 'add-template-soft-delete',
+    up: (db) => {
+      // Defensive: skip if column already exists (e.g. dev environment reset).
+      const cols = db
+        .prepare('PRAGMA table_info(workflow_templates)')
+        .all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'deleted_at')) {
+        db.exec('ALTER TABLE workflow_templates ADD COLUMN deleted_at TEXT');
+      }
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_workflow_templates_deleted_at ON workflow_templates(deleted_at)',
+      );
+    },
+    down: (db) => {
+      // SQLite < 3.35 has no DROP COLUMN — rebuild table to drop the column.
+      db.exec(`
+        CREATE TABLE workflow_templates_backup AS
+          SELECT id, name, description, script, current_version, created_at, updated_at
+          FROM workflow_templates;
+        DROP TABLE workflow_templates;
+        ALTER TABLE workflow_templates_backup RENAME TO workflow_templates;
+      `);
+    },
+  },
+  {
+    version: 3,
+    name: 'add-workflow-run-template-link',
+    up: (db) => {
+      // Add template_id + template_version to workflow_runs so we can trace
+      // any run created from a template back to the exact template + version
+      // that produced it. Both columns are nullable: runs created via the
+      // inline-script endpoint (POST /api/workflows) keep NULL.
+      const cols = db
+        .prepare('PRAGMA table_info(workflow_runs)')
+        .all() as Array<{ name: string }>;
+      const names = new Set(cols.map((c) => c.name));
+      if (!names.has('template_id')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN template_id TEXT');
+      }
+      if (!names.has('template_version')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN template_version INTEGER');
+      }
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_workflow_runs_template_id ON workflow_runs(template_id)',
+      );
+    },
+    down: (db) => {
+      // SQLite < 3.35 has no DROP COLUMN — rebuild the table without the
+      // two new columns. Any non-NULL data is lost on rollback.
+      db.exec(`
+        CREATE TABLE workflow_runs_backup AS
+          SELECT id, name, status, definition_json, created_at, updated_at
+          FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_backup RENAME TO workflow_runs;
+      `);
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure the _migrations meta table exists.
+ */
+function ensureMetaTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+  `);
+}
+
+/**
+ * Get the list of already-applied migrations from the meta table.
+ */
+function getAppliedMigrations(db: Database.Database): MigrationRecord[] {
+  return db
+    .prepare('SELECT version, name, applied_at FROM _migrations ORDER BY version ASC')
+    .all() as MigrationRecord[];
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Run all pending migrations in order.
+ * Safe to call multiple times — only unapplied migrations will execute.
+ *
+ * Must be called AFTER initSchema() so the _migrations meta table
+ * and any baseline tables already exist.
+ */
+export function runMigrations(): void {
+  withRetry(() => {
+    const db = getDb();
+    ensureMetaTable(db);
+    const applied = getAppliedMigrations(db);
+    const appliedVersions = new Set(applied.map((r) => r.version));
+
+    for (const migration of migrations) {
+      if (appliedVersions.has(migration.version)) continue;
+
+      logger.info(`[migrations] Applying v${migration.version}: ${migration.name}`);
+      migration.up(db);
+      db.prepare(
+        'INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)',
+      ).run(migration.version, migration.name, new Date().toISOString());
+      logger.info(`[migrations] Applied v${migration.version}: ${migration.name}`);
+    }
+  });
+}
+
+/**
+ * Get the status of all defined migrations.
+ * Returns an array indicating which migrations have been applied.
+ */
+export function getMigrationStatus(): MigrationStatus[] {
+  return withRetry(() => {
+    const db = getDb();
+    ensureMetaTable(db);
+    const applied = getAppliedMigrations(db);
+    const appliedMap = new Map(applied.map((r) => [r.version, r]));
+
+    return migrations.map((m) => {
+      const record = appliedMap.get(m.version);
+      return {
+        version: m.version,
+        name: m.name,
+        applied: !!record,
+        applied_at: record?.applied_at ?? null,
+      };
+    });
+  });
+}
+
+/**
+ * Roll back the most recently applied migration.
+ * Returns the rolled-back migration, or null if no migrations have been applied.
+ */
+export function rollbackLastMigration(): MigrationRecord | null {
+  return withRetry(() => {
+    const db = getDb();
+    ensureMetaTable(db);
+    const applied = getAppliedMigrations(db);
+
+    if (applied.length === 0) {
+      logger.info('[migrations] No migrations to roll back');
+      return null;
+    }
+
+    const last = applied[applied.length - 1];
+    const migration = migrations.find((m) => m.version === last.version);
+
+    if (!migration) {
+      logger.warn(
+        `[migrations] No definition found for v${last.version} — cannot roll back`,
+      );
+      return null;
+    }
+
+    logger.info(`[migrations] Rolling back v${migration.version}: ${migration.name}`);
+    migration.down(db);
+    db.prepare('DELETE FROM _migrations WHERE version = ?').run(migration.version);
+    logger.info(`[migrations] Rolled back v${migration.version}: ${migration.name}`);
+
+    return last;
+  });
+}
+
+/**
+ * Return the raw list of migration definitions (for introspection).
+ */
+export function getMigrations(): readonly Migration[] {
+  return migrations;
+}

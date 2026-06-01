@@ -1,0 +1,34 @@
+{
+  "name": "dynflow",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Open-source multi-agent workflow orchestration system.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wzrazsh/dynflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wzrazsh/dynflow/issues"
+  },
+  "homepage": "https://github.com/wzrazsh/dynflow#readme",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "build": "tsc -b",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.19",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.4",
+    "prettier": "^3.8.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.60.0",
+    "vitest": "^3.2.4"
+  }
+}

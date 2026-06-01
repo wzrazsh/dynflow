@@ -106,6 +106,58 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: 'add-workspace-and-cua-fields',
+    up: (db) => {
+      // Per-workflow shared workspace: host path on disk + git metadata.
+      const wrCols = db
+        .prepare('PRAGMA table_info(workflow_runs)')
+        .all() as Array<{ name: string }>;
+      const wrNames = new Set(wrCols.map((c) => c.name));
+      if (!wrNames.has('workspace_path')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN workspace_path TEXT');
+      }
+      if (!wrNames.has('workspace_git_url')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN workspace_git_url TEXT');
+      }
+      if (!wrNames.has('workspace_branch')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN workspace_branch TEXT');
+      }
+
+      // Cua + Pi container metadata per agent run.
+      const arCols = db
+        .prepare('PRAGMA table_info(agent_runs)')
+        .all() as Array<{ name: string }>;
+      const arNames = new Set(arCols.map((c) => c.name));
+      if (!arNames.has('no_vnc_url')) {
+        db.exec('ALTER TABLE agent_runs ADD COLUMN no_vnc_url TEXT');
+      }
+      if (!arNames.has('cua_api_url')) {
+        db.exec('ALTER TABLE agent_runs ADD COLUMN cua_api_url TEXT');
+      }
+    },
+    down: (db) => {
+      // SQLite < 3.35 has no DROP COLUMN — rebuild both tables without the
+      // new columns. Any non-NULL data on those columns is lost on rollback.
+      db.exec(`
+        CREATE TABLE workflow_runs_backup AS
+          SELECT id, name, status, definition_json, created_at, updated_at,
+                 template_id, template_version
+          FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_backup RENAME TO workflow_runs;
+      `);
+      db.exec(`
+        CREATE TABLE agent_runs_backup AS
+          SELECT id, phase_run_id, name, status, prompt, model, output, error,
+                 started_at, completed_at, docker_container_id
+          FROM agent_runs;
+        DROP TABLE agent_runs;
+        ALTER TABLE agent_runs_backup RENAME TO agent_runs;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

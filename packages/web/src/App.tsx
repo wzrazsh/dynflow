@@ -16,7 +16,7 @@ import ProjectList from './components/ProjectList';
 import ProjectDetail from './components/ProjectDetail';
 import type { WorkflowTemplate } from '@dynflow/shared';
 
-type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta' | 'projects' | 'project-detail';
+export type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta' | 'projects' | 'project-detail';
 
 export default function App() {
   const [view, setView] = useState<View>('list');

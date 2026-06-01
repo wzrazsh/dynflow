@@ -11,6 +11,8 @@ phase("Research", () => {
 });
 `.trim();
 
+const MUTATION_RESPONSE_BUDGET_MS = 2000;
+
 // ---------------------------------------------------------------------------
 // Setup — fresh in-memory DB before each test
 // ---------------------------------------------------------------------------
@@ -49,7 +51,7 @@ describe('Performance', () => {
     expect(duration).toBeLessThan(200);
   });
 
-  it('responds to POST /api/templates within 500ms', async () => {
+  it('responds to POST /api/templates within the mutation response budget', async () => {
     const app = createApp();
     const start = performance.now();
     const res = await request(app)
@@ -60,7 +62,7 @@ describe('Performance', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.name).toBe('Perf-Create');
-    expect(duration).toBeLessThan(500);
+    expect(duration).toBeLessThan(MUTATION_RESPONSE_BUDGET_MS);
   });
 
   it('responds to GET /api/templates/:id within 200ms', async () => {

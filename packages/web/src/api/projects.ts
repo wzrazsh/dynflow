@@ -1,30 +1,36 @@
 import { get, post } from './client';
-import type { ProjectMeta, ProjectDetail, VersionMeta, RunResponse, FileReadResponse } from '@dynflow/shared';
+import type { ApiResponse, ProjectMeta, ProjectDetail, VersionMeta, RunResponse, FileReadResponse } from '@dynflow/shared';
 
-export function fetchProjects(): Promise<ProjectMeta[]> {
-  return get<ProjectMeta[]>('/projects');
+export async function fetchProjects(): Promise<ProjectMeta[]> {
+  const res = await get<ApiResponse<ProjectMeta[]>>('/projects');
+  return res.data ?? [];
 }
 
-export function fetchProject(name: string): Promise<ProjectDetail> {
-  return get<ProjectDetail>(`/projects/${encodeURIComponent(name)}`);
+export async function fetchProject(name: string): Promise<ProjectDetail> {
+  const res = await get<ApiResponse<ProjectDetail>>(`/projects/${encodeURIComponent(name)}`);
+  return res.data as ProjectDetail;
 }
 
-export function fetchVersions(name: string): Promise<VersionMeta[]> {
-  return get<VersionMeta[]>(`/projects/${encodeURIComponent(name)}/versions`);
+export async function fetchVersions(name: string): Promise<VersionMeta[]> {
+  const res = await get<ApiResponse<VersionMeta[]>>(`/projects/${encodeURIComponent(name)}/versions`);
+  return res.data ?? [];
 }
 
-export function fetchVersion(name: string, version: number): Promise<VersionMeta> {
-  return get<VersionMeta>(`/projects/${encodeURIComponent(name)}/versions/${version}`);
+export async function fetchVersion(name: string, version: number): Promise<VersionMeta> {
+  const res = await get<ApiResponse<VersionMeta>>(`/projects/${encodeURIComponent(name)}/versions/${version}`);
+  return res.data as VersionMeta;
 }
 
-export function readFile(name: string, version: number, path: string): Promise<FileReadResponse> {
-  return post<FileReadResponse>(`/projects/${encodeURIComponent(name)}/versions/${version}/read`, { path });
+export async function readFile(name: string, version: number, path: string): Promise<FileReadResponse> {
+  const res = await post<ApiResponse<FileReadResponse>>(`/projects/${encodeURIComponent(name)}/versions/${version}/read`, { path });
+  return res.data as FileReadResponse;
 }
 
-export function runProject(name: string, prompt: string): Promise<RunResponse> {
-  return post<RunResponse>(`/projects/${encodeURIComponent(name)}/run`, { prompt });
+export async function runProject(name: string, prompt: string): Promise<RunResponse> {
+  const res = await post<ApiResponse<RunResponse>>(`/projects/${encodeURIComponent(name)}/run`, { prompt });
+  return res.data as RunResponse;
 }
 
-export function approveVersion(name: string, version: number): Promise<void> {
-  return post<void>(`/projects/${encodeURIComponent(name)}/versions/${version}/approve`, {});
+export async function approveVersion(name: string, version: number): Promise<void> {
+  await post<ApiResponse<unknown>>(`/projects/${encodeURIComponent(name)}/versions/${version}/approve`, {});
 }

@@ -43,7 +43,31 @@ Thumbs.db
 .sisyphus/
 .gstack/
 .omx/
+.codegraph/
 /outputs/
+
+# AI / IDE agent caches
+.trae/
+
+# Editor & OS backups
+*.bak
+*.bak.*
+*.orig
+*.rej
+*~
+
+# Local test / scratch files at repo root
+/verify.db
+/verify*.db
+*.db.bak
+ls-*.txt
+
+# Tool caches
+.cache/
+.eslintcache
+.stylelintcache
+.parcel-cache/
+.turbo/
 
 # Error logs
 *.err

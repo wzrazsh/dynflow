@@ -42,17 +42,22 @@ export function extractFileJson(
     // Not pure JSON — continue to fallback
   }
 
-  // Try 2: Extract from markdown code block
-  const match = output.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (match) {
-    try {
-      const trimmed = match[1].trim();
-      const parsed = JSON.parse(trimmed);
-      if (parsed && Array.isArray(parsed.files)) {
-        return parsed.files as Array<{ path: string; content: string }>;
+  // Try 2: Extract from markdown code block.
+  // Use first "{" after code block marker and LAST "}" to handle
+  // generated file content that itself contains triple backticks.
+  if (output.includes('```')) {
+    const jsonStart = output.indexOf('{', output.indexOf('```'));
+    const jsonEnd = output.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      try {
+        const trimmed = output.substring(jsonStart, jsonEnd + 1).trim();
+        const parsed = JSON.parse(trimmed);
+        if (parsed && Array.isArray(parsed.files)) {
+          return parsed.files as Array<{ path: string; content: string }>;
+        }
+      } catch {
+        // Not valid JSON — fall through
       }
-    } catch {
-      // Not valid JSON even in code block
     }
   }
 

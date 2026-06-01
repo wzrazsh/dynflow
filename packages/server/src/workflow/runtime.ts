@@ -241,23 +241,5 @@ export class WorkflowRuntime {
       sseFactory.createWorkflowCompletedEvent(workflowRunId),
     );
 
-    // Update version meta on workflow completion
-    await this.updateVersionMetaOnTerminal(projectName, version);
-  }
-
-  /**
-   * Update version meta to the given terminal status when project context
-   * is available. Errors are swallowed to avoid aborting the caller.
-   */
-  private async updateVersionMetaOnTerminal(
-    projectName?: string,
-    version?: number,
-  ): Promise<void> {
-    if (!this.projectService || !projectName || version === undefined) return;
-    try {
-      await this.projectService.updateVersionStatus(projectName, version, 'failed');
-    } catch {
-      // Non-fatal
-    }
   }
 }

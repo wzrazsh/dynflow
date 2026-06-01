@@ -47,3 +47,9 @@ npm run smoke   # starts the container for 30s
 docker exec cua-smoke which pi       # should print a path
 docker stop cua-smoke
 ```
+
+> **Note**: As of 2026-06-01, this image was authored but not built in the
+> development environment because Docker was not available locally. The
+> Dockerfile, scripts, and config have been validated by code review.
+> To verify the image in a Docker-enabled environment, run
+> `npm run build:image && npm run smoke`.

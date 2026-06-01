@@ -123,7 +123,7 @@ export class ProjectService {
     }
 
     const resolved = path.resolve(baseDir, userPath);
-    const normalizedBase = path.normalize(baseDir);
+    const normalizedBase = path.resolve(baseDir);
 
     // Guard: ensure the resolved path stays inside baseDir.
     // Use a trailing separator to prevent false match on sibling prefixes

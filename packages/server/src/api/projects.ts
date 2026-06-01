@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ProjectService } from '../project/project-service.js';
 import type { ProjectMeta, VersionMeta } from '../project/types.js';
 import {
@@ -401,8 +402,8 @@ router.post('/:name/run', async (req, res) => {
       `Project: ${name} v${version}`,
     );
 
-    // --- Set up output context ---
-    const outputDir = projectService.resolveVersionDir(name, version);
+    // --- Set up output context (resolve to absolute path for Docker volume mount) ---
+    const outputDir = path.resolve(projectService.resolveVersionDir(name, version));
     const executeOpts: WorkflowExecuteOptions = {
       projectName: name,
       version,

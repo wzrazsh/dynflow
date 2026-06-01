@@ -43,10 +43,11 @@ export function extractFileJson(
   }
 
   // Try 2: Extract from markdown code block
-  const match = output.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  const match = output.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (match) {
     try {
-      const parsed = JSON.parse(match[1]);
+      const trimmed = match[1].trim();
+      const parsed = JSON.parse(trimmed);
       if (parsed && Array.isArray(parsed.files)) {
         return parsed.files as Array<{ path: string; content: string }>;
       }
@@ -143,7 +144,7 @@ export async function executeAgent(): Promise<AgentResult> {
         body: JSON.stringify({
           model,
           messages: [{ role: "user", content: enhancedPrompt }],
-          max_tokens: 2048,
+          max_tokens: 8192,
         }),
         signal: controller.signal,
       });

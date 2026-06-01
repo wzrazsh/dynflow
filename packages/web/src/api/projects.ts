@@ -22,7 +22,7 @@ export async function fetchVersion(name: string, version: number): Promise<Versi
 }
 
 export async function readFile(name: string, version: number, path: string): Promise<FileReadResponse> {
-  const res = await post<ApiResponse<FileReadResponse>>(`/projects/${encodeURIComponent(name)}/versions/${version}/read`, { path });
+  const res = await get<ApiResponse<FileReadResponse>>(`/projects/${encodeURIComponent(name)}/versions/${version}/files?path=${encodeURIComponent(path)}`);
   return res.data as FileReadResponse;
 }
 

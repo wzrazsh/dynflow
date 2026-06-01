@@ -1,14 +1,14 @@
 import { get, post } from './client';
-import type { ApiResponse, ProjectMeta, ProjectDetail, VersionMeta, RunResponse, FileReadResponse } from '@dynflow/shared';
+import type { ApiResponse, ProjectMeta, VersionMeta, RunResponse, FileReadResponse } from '@dynflow/shared';
 
 export async function fetchProjects(): Promise<ProjectMeta[]> {
   const res = await get<ApiResponse<ProjectMeta[]>>('/projects');
   return res.data ?? [];
 }
 
-export async function fetchProject(name: string): Promise<ProjectDetail> {
-  const res = await get<ApiResponse<ProjectDetail>>(`/projects/${encodeURIComponent(name)}`);
-  return res.data as ProjectDetail;
+export async function fetchProject(name: string): Promise<ProjectMeta> {
+  const res = await get<ApiResponse<ProjectMeta>>(`/projects/${encodeURIComponent(name)}`);
+  return res.data as ProjectMeta;
 }
 
 export async function fetchVersions(name: string): Promise<VersionMeta[]> {

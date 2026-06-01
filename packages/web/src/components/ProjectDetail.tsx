@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ProjectDetail as ProjectDetailType, VersionMeta } from '@dynflow/shared';
+import type { ProjectMeta, VersionMeta } from '@dynflow/shared';
 import { fetchProject, fetchVersions, readFile, runProject, approveVersion } from '../api/projects';
 import StatusBadge from './StatusBadge';
 
@@ -139,7 +139,7 @@ function FileTree({
 }
 
 export default function ProjectDetail({ projectName, onBack, onError, onSuccess }: ProjectDetailProps) {
-  const [project, setProject] = useState<ProjectDetailType | null>(null);
+  const [project, setProject] = useState<ProjectMeta | null>(null);
   const [versions, setVersions] = useState<VersionMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -327,7 +327,7 @@ export default function ProjectDetail({ projectName, onBack, onError, onSuccess 
       </div>
 
       <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: '0.8125rem' }}>
-        Created: {new Date(project.createdAt).toLocaleString()} | Versions: {project.versions.length}
+        Created: {new Date(project.createdAt).toLocaleString()} | Versions: {versions.length}
       </p>
 
       {/* Main layout: version sidebar + content area */}

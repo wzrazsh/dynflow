@@ -14,6 +14,30 @@ export default function ProjectList({
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectPrompt, setNewProjectPrompt] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateAndRun = async () => {
+    const name = newProjectName.trim();
+    const prompt = newProjectPrompt.trim();
+    if (!name || !prompt) return;
+    setCreating(true);
+    try {
+      const { runProject } = await import('../api/projects');
+      await runProject(name, prompt);
+      setNewProjectName('');
+      setNewProjectPrompt('');
+      // Reload project list
+      const data = await fetchProjects();
+      setProjects(data);
+      onSelect(name);
+    } catch (e) {
+      onError?.(String(e));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -44,25 +68,53 @@ export default function ProjectList({
     return (
       <div>
         <div style={{ marginBottom: 16, color: '#6b7280', fontSize: '0.875rem' }}>
-          No projects yet. Create your first project by running a workflow with file output.
+          No projects yet. Enter a project name and prompt to create your first project.
         </div>
-        {onNewProject && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 400 }}>
+          <input
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value)}
+            placeholder="Project name (e.g. mathquest)"
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.875rem',
+              fontFamily: 'inherit',
+            }}
+          />
+          <textarea
+            value={newProjectPrompt}
+            onChange={(e) => setNewProjectPrompt(e.target.value)}
+            placeholder="Describe what to generate..."
+            rows={3}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.875rem',
+              fontFamily: 'inherit',
+              resize: 'vertical',
+              lineHeight: 1.4,
+            }}
+          />
           <button
-            onClick={onNewProject}
+            onClick={handleCreateAndRun}
+            disabled={creating || !newProjectName.trim() || !newProjectPrompt.trim()}
             style={{
               padding: '8px 20px',
-              backgroundColor: '#3b82f6',
+              backgroundColor: creating || !newProjectName.trim() || !newProjectPrompt.trim() ? '#d1d5db' : '#0891b2',
               color: '#fff',
               border: 'none',
               borderRadius: 6,
               fontSize: '0.875rem',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: creating || !newProjectName.trim() || !newProjectPrompt.trim() ? 'not-allowed' : 'pointer',
             }}
           >
-            + New Project
+            {creating ? 'Creating...' : 'Create & Run Project'}
           </button>
-        )}
+        </div>
       </div>
     );
   }

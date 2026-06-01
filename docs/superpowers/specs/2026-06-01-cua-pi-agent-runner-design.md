@@ -12,6 +12,8 @@
 - **Pi** 是住在容器里、负责推理和工具调用的智能体
 - **DynFlow** 通过 `@trycua/computer` Node SDK 统一管理沙箱生命周期
 
+> **SDK 选型说明**：Cua 生态有多个 SDK（`@trycua/computer` TypeScript、`cua-sandbox` Python、`cua-computer` Python 已废弃）。我们选 `@trycua/computer` 是因为：① DynFlow 是 TypeScript 后端 ② 这是 Cua 官方维护的 Node.js 入口 ③ Python 端的 `cua-sandbox` 是新统一 SDK 但 DynFlow 不需要 Python。
+
 目标是让 DynFlow **只关心工作流编排**，把 agent 执行、LLM 调用、桌面环境、IDE/浏览器使用全部委托给 Cua + Pi。
 
 ---
@@ -49,10 +51,11 @@
 │  └──────────────────────────────────────────────────────┘       │
 │                                                                   │
 │  Frontend (React) - 可选 noVNC 嵌入:                              │
-│   ┌────────────────────────────────────────┐                    │
-│   │  <iframe src="http://localhost:6901">  │  实时显示 agent    │
-│   │  <Pi 事件流>                          │  屏幕              │
-│   └────────────────────────────────────────┘                    │
+│   ┌────────────────────────────────────────────┐                │
+│   │  <iframe src="{noVncUrl}">                  │  实时显示     │
+│   │   {noVncUrl 由 Cua SDK 动态返回}            │  agent 屏幕   │
+│   │  <Pi 事件流 (SSE)>                          │              │
+│   └────────────────────────────────────────────┘                │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 │ @trycua/computer SDK
@@ -64,20 +67,20 @@
 │  │  Linux 桌面 (XFCE)                                     │       │
 │  │   - IDE (VSCode/Codium)                                │       │
 │  │   - Browser (Firefox)                                  │       │
-│  │   - Terminal                                           │       │
+│  │   - Terminal (Pi 在这里运行)                            │       │
 │  │   - Files Manager                                      │       │
 │  └──────────────────────────────────────────────────────┘       │
 │                                                                   │
 │  ┌──────────────────────────────────────────────────────┐       │
-│  │  Pi (CLI 进程)                                          │       │
+│  │  Pi (CLI 进程, 通过 Cua SDK 触发)                      │       │
 │  │   - 工作目录: /home/cua/workspace                      │       │
 │  │   - 工具: bash / read / write / edit / git / grep      │       │
-│  │   - 输出: JSONL 到 stdout                              │       │
+│  │   - 输出: JSONL → computer.shell.run() 返回值         │       │
 │  └──────────────────────────────────────────────────────┘       │
 │                                                                   │
 │  ┌──────────────────────────────────────────────────────┐       │
-│  │  Cua computer-server (HTTP API on :8000)               │       │
-│  │  noVNC (Web VNC on :6901)                              │       │
+│  │  Cua computer-server (HTTP API, 端口由 SDK 分配)       │       │
+│  │  noVNC (Web VNC, 端口由 SDK 分配)                      │       │
 │  └──────────────────────────────────────────────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -335,8 +338,8 @@ async function scanWorkspaceChanges(workspacePath: string) {
 | Pi 超时 | `shell.run` timeout | `computer.stop()` + 标记 timeout |
 | Pi 内部错误 | `stopReason === 'error'` | 解析 errorMessage, 标记 failed |
 | 网络/认证错误 | 容器 stderr 含 401/429 | 标记 failed, 不重试（auth）/DynFlow 重试（rate） |
-| 工作区 git 失败 | `git clone` 退出非 0 | 启动前 fail, 不消耗 sandbox 资源 |
-| 沙箱崩溃 | container exit code != 0 | 解析 logs, 标记 failed |
+| 工作区 git 失败 | `shell.run("git clone ...")` 退出非 0 | 启动前 fail, 不消耗 sandbox 资源 |
+| 沙箱失联 | `computer.shell.run()` throws | `computer.stop()` 清理, 标记 failed |
 | Pi 工具错误 | `tool_execution_end` isError=true | 解析 message, 附加到 error 字段 |
 
 ### 4.4 重试策略

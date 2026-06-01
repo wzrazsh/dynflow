@@ -113,12 +113,25 @@ export class WorkflowRuntime {
       // 'running', so this will only trigger if paused/stopped again)
       if (this.aborted) {
         repo.updateWorkflowStatus(workflowRunId, 'stopped');
-        await this.updateVersionMetaOnTerminal(projectName, version);
+        await this.updateVersionMetaOnTerminal(
+          projectName,
+          version,
+          'Workflow stopped',
+        );
         return; // Exit early — aborted
       }
 
-      if (currentRun.status === 'paused' || currentRun.status === 'stopped') {
-        return; // Exit early — paused/stopped
+      if (currentRun.status === 'stopped') {
+        await this.updateVersionMetaOnTerminal(
+          projectName,
+          version,
+          'Workflow stopped',
+        );
+        return; // Exit early stopped
+      }
+
+      if (currentRun.status === 'paused') {
+        return; // Exit early paused
       }
 
       // Update phase to running
@@ -240,6 +253,24 @@ export class WorkflowRuntime {
       workflowRunId,
       sseFactory.createWorkflowCompletedEvent(workflowRunId),
     );
+  }
 
+  private async updateVersionMetaOnTerminal(
+    projectName: string | undefined,
+    version: number | undefined,
+    error: string,
+  ): Promise<void> {
+    if (!this.projectService || !projectName || version === undefined) return;
+
+    try {
+      await this.projectService.updateVersionStatus(
+        projectName,
+        version,
+        'failed',
+        error,
+      );
+    } catch {
+      // Version metadata is best-effort and must not mask workflow termination.
+    }
   }
 }

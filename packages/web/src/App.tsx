@@ -15,6 +15,7 @@ import MetaWorkflow from './components/MetaWorkflow';
 import ProjectList from './components/ProjectList';
 import ProjectDetail from './components/ProjectDetail';
 import Layout from './components/Layout';
+import WorkflowDrawer from './components/WorkflowDrawer';
 import type { WorkflowTemplate } from '@dynflow/shared';
 
 export type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templates' | 'template-detail' | 'meta' | 'projects' | 'project-detail';
@@ -31,6 +32,7 @@ export default function App() {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [selectedProjectName, setSelectedProjectName] = useState<string | null>(null);
+  const [drawerWorkflowId, setDrawerWorkflowId] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     type: 'error' | 'info' | 'success';
@@ -58,8 +60,7 @@ export default function App() {
         {view === 'list' && (
           <WorkflowList
             onSelect={(id) => {
-              setSelectedId(id);
-              setView('detail');
+              setDrawerWorkflowId(id);
             }}
             onError={showError}
           />
@@ -322,6 +323,13 @@ export default function App() {
           />
         )}
       </Layout>
+      {drawerWorkflowId && (
+        <WorkflowDrawer
+          workflowId={drawerWorkflowId}
+          onClose={() => setDrawerWorkflowId(null)}
+          onError={showError}
+        />
+      )}
     </ErrorBoundary>
   );
 }

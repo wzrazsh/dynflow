@@ -1,6 +1,9 @@
 import { DockerAgentRunner } from './docker-runner.js';
 import { WslDockerAgentRunner } from './wsl-docker-runner.js';
 import { CuaAgentRunner } from './cua-runner.js';
+import { PiDirectRunner } from './pi-direct-runner.js';
+import { CuaPiRunner } from './cua-pi-runner.js';
+import { PiCuaNativeRunner } from './pi-cua-native-runner.js';
 import type { AgentRunner } from './types.js';
 import { logger } from '../logger.js';
 
@@ -10,11 +13,25 @@ import { logger } from '../logger.js';
  * Selection via env var `DYNFLOW_RUNNER`:
  *   - 'cua' (default): CuaAgentRunner — runs Pi inside a Cua-based Docker
  *     sandbox image (`dynflow-cua-pi:latest` or `trycua/cua-xfce`).
+ *   - 'cua-pi': CuaPiRunner — runs Pi on the host, talking to a Cua
+ *     Computer Server (Python HTTP service) for sandboxed computer use.
+ *     This is the Docker-less path: Cua runs as a Python service on the
+ *     host (or a remote VM) and exposes its computer-use API to Pi.
+ *   - 'pi-cua-native': PiCuaNativeRunner — in-process variant of
+ *     cua-pi. Calls `runAgentLoop` from `@earendil-works/pi-agent-core`
+ *     directly, with custom Cua-backed `AgentTool[]` definitions. This
+ *     is the programmatic, low-overhead path: no CLI fork, no JSONL
+ *     parsing, full event-stream visibility.
  *   - 'docker': legacy DockerAgentRunner / WslDockerAgentRunner — the
  *     pre-Cua OpenAI-only runner.
+ *   - 'pi-direct': PiDirectRunner — runs the local `pi` CLI directly,
+ *     without any sandbox (host-privileged, opt-in only).
  *
- * Backward compatibility: if `DYNFLOW_RUNNER` is unset, we default to
- * 'cua' but fall back to 'docker' if Cua's image is not present.
+ * Backward compatibility: if `DYNFLOW_RUNNER` is unset, we try 'cua'
+ * first (full Cua+Pi sandbox), then 'cua-pi' (Cua Computer Server path),
+ * then fall back to 'docker'. `pi-cua-native` and `pi-direct` are
+ * explicit-only — they require `DYNFLOW_RUNNER=pi-cua-native` or
+ * `DYNFLOW_RUNNER=pi-direct` respectively.
  */
 export function createAgentRunner(): AgentRunner {
   const explicit = process.env.DYNFLOW_RUNNER;
@@ -26,12 +43,37 @@ export function createAgentRunner(): AgentRunner {
     logger.info('Runner: cua (default)');
     return new CuaAgentRunner();
   }
-  // Unset or unknown — try cua first, fall back to docker.
+  if (explicit === 'cua-pi') {
+    logger.info('Runner: cua-pi (Cua Computer Server + Pi, DYNFLOW_RUNNER=cua-pi)');
+    return new CuaPiRunner();
+  }
+  if (explicit === 'pi-cua-native') {
+    logger.info(
+      'Runner: pi-cua-native (in-process Pi + Cua Computer Server, DYNFLOW_RUNNER=pi-cua-native)',
+    );
+    return new PiCuaNativeRunner();
+  }
+  if (explicit === 'pi-direct') {
+    logger.info('Runner: pi-direct (opt-in, DYNFLOW_RUNNER=pi-direct)');
+    return new PiDirectRunner();
+  }
+  // Unset or unknown — try cua first, then cua-pi, then docker.
+  // `pi-cua-native` and `pi-direct` are explicit-only and are NOT
+  // auto-selected even when their module/binary is available.
   if (CuaAgentRunner.isAvailable()) {
     logger.info('Runner: cua (auto-selected)');
     return new CuaAgentRunner();
   }
-  logger.warn('Runner: cua unavailable, falling back to docker');
+  if (CuaPiRunner.isAvailable()) {
+    logger.info('Runner: cua-pi (auto-selected, Cua Computer Server + Pi)');
+    return new CuaPiRunner();
+  }
+  if (PiDirectRunner.isAvailable()) {
+    logger.info(
+      'Runner: local `pi` CLI detected. Set DYNFLOW_RUNNER=pi-direct to use it (no auto-fallback for security).',
+    );
+  }
+  logger.warn('Runner: cua + cua-pi unavailable, falling back to docker');
   return selectDockerRunner();
 }
 

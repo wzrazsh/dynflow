@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@dynflow/shared": "*",
+    "@earendil-works/pi-agent-core": "^0.78.0",
     "@trycua/computer": "^0.1.6",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",

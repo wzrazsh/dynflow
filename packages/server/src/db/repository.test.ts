@@ -8,6 +8,34 @@ import type { WorkflowDefinition } from '@dynflow/shared';
 // Helpers
 // ---------------------------------------------------------------------------
 
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function seedSixWorkflows(): void {
+  const db = getDb();
+  const def = JSON.stringify({ name: 'test', phases: [] });
+  const now = new Date().toISOString();
+
+  const insert = db.prepare(`
+    INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // wf-1: completed, 8 days ago, template 'mq'
+  insert.run('wf-1', 'MathQuest v1', 'completed', def, daysAgo(8), now, 'mq');
+  // wf-2: completed, template 'mq'
+  insert.run('wf-2', 'MathQuest v15', 'completed', def, now, now, 'mq');
+  // wf-3: pending
+  insert.run('wf-3', 'Test Workflow', 'pending', def, now, now, null);
+  // wf-4: failed, 30 days ago
+  insert.run('wf-4', 'Failed Job', 'failed', def, daysAgo(30), now, null);
+  // wf-5: completed
+  insert.run('wf-5', 'probe-test', 'completed', def, now, now, null);
+  // wf-6: running, template 'foo'
+  insert.run('wf-6', 'Recent Foo', 'running', def, now, now, 'foo');
+}
+
 function sampleDefinition(): WorkflowDefinition {
   return {
     name: 'test-flow',
@@ -125,6 +153,92 @@ describe('listWorkflowRuns', () => {
     for (let i = 0; i < 5; i++) {
       expect(allNames).toContain(`Workflow ${i}`);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // T2 — listWorkflowRuns filters (11 new tests: F1–F9 + pagination + injection)
+  // ---------------------------------------------------------------------------
+
+  it('F1 — no filters returns all 6 workflows', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, {});
+    expect(result.total).toBe(6);
+    expect(result.runs).toHaveLength(6);
+  });
+
+  it('F2 — filters by name (LIKE, case-insensitive)', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, { name: 'MathQuest' });
+    expect(result.total).toBe(2);
+    expect(result.runs.map((r) => r.id).sort()).toEqual(['wf-1', 'wf-2']);
+  });
+
+  it('F3 — filters by status', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, { status: 'failed' });
+    expect(result.total).toBe(1);
+    expect(result.runs[0].id).toBe('wf-4');
+  });
+
+  it('F4 — filters by templateId', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, { templateId: 'mq' });
+    expect(result.total).toBe(2);
+    expect(result.runs.map((r) => r.id).sort()).toEqual(['wf-1', 'wf-2']);
+  });
+
+  it('F5 — filters by sinceDays (last 7 days)', () => {
+    seedSixWorkflows();
+    // Excludes wf-1 (8 days old) and wf-4 (30 days old)
+    const result = repo.listWorkflowRuns(1, 10, { sinceDays: 7 });
+    expect(result.total).toBe(4);
+  });
+
+  it('F6 — combines name + status + sinceDays filters', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, {
+      name: 'MathQuest',
+      status: 'completed',
+      sinceDays: 0,
+    });
+    // Only wf-2 matches: name=MathQuest, status=completed, created "today"
+    expect(result.total).toBe(1);
+    expect(result.runs[0].id).toBe('wf-2');
+  });
+
+  it('F7 — pagination with filters (page 2, size 2)', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(2, 2, {});
+    expect(result.runs).toHaveLength(2);
+    expect(result.total).toBe(6);
+  });
+
+  it('F9 — SQL injection attempt does not crash', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, {
+      name: "'; DROP TABLE workflow_runs; --",
+    });
+    expect(result.total).toBe(0);
+    // Verify table still exists
+    const db = getDb();
+    const check = db.prepare('SELECT COUNT(*) as count FROM workflow_runs').get() as { count: number };
+    expect(check.count).toBe(6);
+  });
+});
+
+describe('createWorkflowRun — script storage', () => {
+  it('F8 — stores and retrieves script', () => {
+    const script = 'workflow("test", () => { phase("p1", () => { agent("a1", "do stuff"); }); });';
+    const run = repo.createWorkflowRun(
+      sampleDefinition(),
+      'Scripted',
+      { script },
+    );
+    expect(run.script).toBe(script);
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched).toBeDefined();
+    expect(fetched!.script).toBe(script);
   });
 });
 

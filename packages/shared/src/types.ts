@@ -55,6 +55,8 @@ export interface WorkflowRun {
   workspaceGitUrl?: string;
   /** Git branch the workspace was checked out to. */
   workspaceBranch?: string;
+  /** Original workflow script that produced this run. */
+  script?: string;
 }
 
 export interface PhaseRun {
@@ -151,6 +153,13 @@ export interface WorkflowListResponse {
   page: number;
   pageSize: number;
   total: number;
+}
+
+export interface WorkflowListFilters {
+  name?: string;
+  status?: WorkflowStatus;
+  templateId?: string;
+  sinceDays?: number;
 }
 
 export interface ValidationResult {

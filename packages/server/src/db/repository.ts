@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb, withRetry } from './connection.js';
 import type {
   WorkflowDefinition,
+  WorkflowListFilters,
   WorkflowRun,
   PhaseRun,
   AgentRun,
@@ -35,7 +36,7 @@ import type {
 export function createWorkflowRun(
   definition: WorkflowDefinition,
   name: string,
-  opts?: { templateId?: string; templateVersion?: number },
+  opts?: { templateId?: string; templateVersion?: number; script?: string },
 ): WorkflowRun {
   const db = getDb();
   const id = uuidv4();
@@ -46,9 +47,10 @@ export function createWorkflowRun(
       `INSERT INTO workflow_runs (
          id, name, status, definition_json, created_at, updated_at,
          template_id, template_version,
-         workspace_path, workspace_git_url, workspace_branch
+         workspace_path, workspace_git_url, workspace_branch,
+         script
        )
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       name,
@@ -60,6 +62,7 @@ export function createWorkflowRun(
       definition.workspace?.path ?? null,
       definition.workspace?.git ?? null,
       definition.workspace?.branch ?? null,
+      opts?.script ?? null,
     ),
   );
 
@@ -122,6 +125,7 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
     workspacePath: (workflow.workspace_path as string | null) ?? undefined,
     workspaceGitUrl: (workflow.workspace_git_url as string | null) ?? undefined,
     workspaceBranch: (workflow.workspace_branch as string | null) ?? undefined,
+    script: (workflow.script as string | null) ?? undefined,
   };
 }
 
@@ -132,13 +136,36 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
 export function listWorkflowRuns(
   page: number,
   pageSize: number,
+  filters: WorkflowListFilters = {},
 ): { runs: WorkflowRun[]; total: number } {
   const db = getDb();
 
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filters.name) {
+    conditions.push('name LIKE ?');
+    params.push(`%${filters.name}%`);
+  }
+  if (filters.status) {
+    conditions.push('status = ?');
+    params.push(filters.status);
+  }
+  if (filters.templateId) {
+    conditions.push('template_id = ?');
+    params.push(filters.templateId);
+  }
+  if (filters.sinceDays !== undefined) {
+    conditions.push('created_at >= datetime(\'now\', ?)');
+    params.push(`-${filters.sinceDays} days`);
+  }
+
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+
   const countRow = withRetry(() =>
     db
-      .prepare('SELECT COUNT(*) as count FROM workflow_runs')
-      .get(),
+      .prepare(`SELECT COUNT(*) as count FROM workflow_runs${whereClause}`)
+      .get(...params),
   ) as { count: number };
   const total = countRow.count;
 
@@ -146,9 +173,9 @@ export function listWorkflowRuns(
   const rows = withRetry(() =>
     db
       .prepare(
-        'SELECT id FROM workflow_runs ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        `SELECT id FROM workflow_runs${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       )
-      .all(pageSize, offset),
+      .all(...params, pageSize, offset),
   ) as { id: string }[];
 
   const runs = rows.map((row) => getWorkflowRun(row.id)!);

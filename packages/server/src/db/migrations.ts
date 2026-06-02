@@ -158,6 +158,33 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: 'add-script-to-workflow-runs',
+    up: (db) => {
+      // Store the original workflow script on each run so the UI can display
+      // it without re-reading the user's filesystem.
+      const cols = db
+        .prepare('PRAGMA table_info(workflow_runs)')
+        .all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'script')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN script TEXT');
+      }
+    },
+    down: (db) => {
+      // SQLite < 3.35 has no DROP COLUMN — rebuild the table without the
+      // script column. Any non-NULL data on that column is lost.
+      db.exec(`
+        CREATE TABLE workflow_runs_backup AS
+          SELECT id, name, status, definition_json, created_at, updated_at,
+                 template_id, template_version, workspace_path,
+                 workspace_git_url, workspace_branch
+          FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_backup RENAME TO workflow_runs;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

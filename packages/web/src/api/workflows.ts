@@ -5,6 +5,7 @@ export function fetchWorkflows(
   page = 1,
   pageSize = 10,
   filters: WorkflowListFilters = {},
+  signal?: AbortSignal,
 ): Promise<WorkflowListResponse> {
   const params = new URLSearchParams();
   params.set('page', String(page));
@@ -13,7 +14,7 @@ export function fetchWorkflows(
   if (filters.status) params.set('status', filters.status);
   if (filters.templateId) params.set('templateId', filters.templateId);
   if (filters.sinceDays !== undefined) params.set('sinceDays', String(filters.sinceDays));
-  return get<WorkflowListResponse>(`/workflows?${params.toString()}`);
+  return get<WorkflowListResponse>(`/workflows?${params.toString()}`, signal);
 }
 
 export function fetchWorkflow(id: string): Promise<ApiResponse<WorkflowRun>> {

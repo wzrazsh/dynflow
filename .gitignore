@@ -81,3 +81,7 @@ docker-compose.override.yml
 
 # Game artifacts
 mathquest.html
+
+# Local-only: CI workflows, brainstorming specs/plans
+.github/workflows/
+docs/superpowers/

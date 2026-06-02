@@ -123,6 +123,16 @@ describe('POST /api/workflows', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe('Name and script are required');
   });
+
+  it('17 — stores script and returns it in response', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/workflows')
+      .send({ name: 'Script Test', script: VALID_SCRIPT })
+      .expect('Content-Type', /json/);
+    expect(res.status).toBe(201);
+    expect(res.body.data.script).toBe(VALID_SCRIPT);
+  });
 });
 
 describe('GET /api/workflows', () => {
@@ -142,7 +152,7 @@ describe('GET /api/workflows', () => {
     expect(res.body.data).toHaveLength(3);
     expect(res.body.total).toBe(3);
     expect(res.body.page).toBe(1);
-    expect(res.body.pageSize).toBe(20);
+    expect(res.body.pageSize).toBe(10);
   });
 
   it('6 — paginates with page and pageSize params', async () => {
@@ -172,6 +182,43 @@ describe('GET /api/workflows', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toEqual([]);
     expect(res.body.total).toBe(0);
+  });
+
+  it('14 — filters by name query param', async () => {
+    repo.createWorkflowRun(sampleDefinition(), 'MathQuest v15');
+    repo.createWorkflowRun(sampleDefinition(), 'Test Workflow');
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/workflows?name=MathQuest')
+      .expect('Content-Type', /json/);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].name).toBe('MathQuest v15');
+    expect(res.body.total).toBe(1);
+  });
+
+  it('15 — filters by status query param', async () => {
+    repo.createWorkflowRun(sampleDefinition(), 'Running Wf');
+    const db = getDb();
+    db.prepare('UPDATE workflow_runs SET status = ? WHERE name = ?').run('running', 'Running Wf');
+    repo.createWorkflowRun(sampleDefinition(), 'Pending Wf');
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/workflows?status=running')
+      .expect('Content-Type', /json/);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].name).toBe('Running Wf');
+  });
+
+  it('16 — pageSize clamped to max 50', async () => {
+    for (let i = 0; i < 60; i++) repo.createWorkflowRun(sampleDefinition(), `Wf ${i}`);
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/workflows?pageSize=999')
+      .expect('Content-Type', /json/);
+    expect(res.status).toBe(200);
+    expect(res.body.pageSize).toBe(50);
   });
 });
 

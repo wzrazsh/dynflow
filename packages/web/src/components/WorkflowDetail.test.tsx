@@ -157,6 +157,53 @@ describe('WorkflowDetail', () => {
     expect(screen.getByText(/Agent execution failed: API timeout/)).toBeDefined();
   });
 
+  it('renders noVNC and Cua API links for agent that ran in a Cua sandbox', async () => {
+    const user = userEvent.setup();
+    const workflowWithCuaAgent = {
+      ...mockWorkflow,
+      status: 'running',
+      phases: [
+        {
+          ...mockWorkflow.phases[0],
+          agents: [
+            {
+              id: 'agent-cua',
+              name: 'desktop-pilot',
+              status: 'completed',
+              prompt: 'Open the browser and verify the dashboard renders',
+              output: 'Done — screenshot confirms dashboard loaded.',
+              noVncUrl: 'http://localhost:6942',
+              cuaApiUrl: 'http://localhost:8042',
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(fetchWorkflow).mockResolvedValue({ success: true, data: workflowWithCuaAgent });
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+    await waitFor(() => expect(screen.getByText('Research')).toBeDefined());
+    await user.click(screen.getByText('Research'));
+
+    const noVncLink = screen.getByRole('link', { name: /Cua Desktop/i }) as HTMLAnchorElement;
+    expect(noVncLink.href).toBe('http://localhost:6942/');
+    expect(noVncLink.target).toBe('_blank');
+    expect(noVncLink.rel).toContain('noopener');
+
+    const apiLink = screen.getByRole('link', { name: /Cua API/i }) as HTMLAnchorElement;
+    expect(apiLink.href).toBe('http://localhost:8042/');
+  });
+
+  it('does not render Cua links when agent has no sandbox URLs', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchWorkflow).mockResolvedValue({ success: true, data: mockWorkflow });
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+    await waitFor(() => expect(screen.getByText('Research')).toBeDefined());
+    await user.click(screen.getByText('Research'));
+
+    expect(screen.queryByRole('link', { name: /Cua Desktop/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Cua API/i })).toBeNull();
+  });
+
   it('shows error state when fetch fails', async () => {
     vi.mocked(fetchWorkflow).mockResolvedValue({ success: false, error: 'Workflow not found' });
     render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);

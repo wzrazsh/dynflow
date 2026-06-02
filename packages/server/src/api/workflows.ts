@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { WorkflowRun, ApiResponse, WorkflowListResponse } from '@dynflow/shared';
+import type { WorkflowRun, ApiResponse, WorkflowListResponse, WorkflowListFilters, WorkflowStatus } from '@dynflow/shared';
 import { executeScript } from '../sandbox/isolated-runtime.js';
 import * as repo from '../db/repository.js';
 
@@ -32,18 +32,23 @@ router.post('/', async (req, res) => {
     }
 
     // Persist
-    const workflowRun = repo.createWorkflowRun(result.definition!, name);
+    const workflowRun = repo.createWorkflowRun(result.definition!, name, { script });
     res.status(201).json({ success: true, data: workflowRun } as ApiResponse<WorkflowRun>);
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }
 });
 
-// GET /api/workflows — List workflows (paginated)
+// GET /api/workflows — List workflows (paginated, filterable)
 router.get('/', (req, res) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
-  const { runs, total } = repo.listWorkflowRuns(page, pageSize);
+  const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize as string) || 10));
+  const filters: WorkflowListFilters = {};
+  if (req.query.name) filters.name = req.query.name as string;
+  if (req.query.status) filters.status = req.query.status as WorkflowStatus;
+  if (req.query.templateId) filters.templateId = req.query.templateId as string;
+  if (req.query.sinceDays) filters.sinceDays = parseInt(req.query.sinceDays as string);
+  const { runs, total } = repo.listWorkflowRuns(page, pageSize, filters);
   res.json({ success: true, data: runs, page, pageSize, total } as WorkflowListResponse);
 });
 

@@ -370,6 +370,57 @@ export default function WorkflowDetail({
                           {agent.name}
                         </span>
                         <StatusBadge status={agent.status} />
+                        {(agent.noVncUrl || agent.cuaApiUrl) && (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              marginLeft: 'auto',
+                              fontSize: '0.6875rem',
+                              color: '#6b7280',
+                            }}
+                          >
+                            {agent.noVncUrl && (
+                              <a
+                                href={agent.noVncUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#1d4ed8',
+                                  textDecoration: 'none',
+                                  border: '1px solid #bfdbfe',
+                                  backgroundColor: '#eff6ff',
+                                  borderRadius: 10,
+                                  padding: '1px 8px',
+                                  fontWeight: 600,
+                                }}
+                                title={`Open Cua desktop: ${agent.noVncUrl}`}
+                              >
+                                🖥️ Cua Desktop
+                              </a>
+                            )}
+                            {agent.cuaApiUrl && (
+                              <a
+                                href={agent.cuaApiUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#6b7280',
+                                  textDecoration: 'none',
+                                  border: '1px solid #e5e7eb',
+                                  backgroundColor: '#f9fafb',
+                                  borderRadius: 10,
+                                  padding: '1px 8px',
+                                  fontWeight: 600,
+                                }}
+                                title={`Cua computer-server API: ${agent.cuaApiUrl}`}
+                              >
+                                Cua API
+                              </a>
+                            )}
+                          </span>
+                        )}
                       </div>
 
                       <p

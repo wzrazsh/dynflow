@@ -1,9 +1,13 @@
 import type { AgentRunner } from '../runner/types.js';
 import type { ProjectService } from '../project/project-service.js';
 import { PhaseExecutor } from './phase-executor.js';
+import { PiDirectRunner } from '../runner/pi-direct-runner.js';
+import { PiCuaNativeRunner } from '../runner/pi-cua-native-runner.js';
+import { CuaPiRunner } from '../runner/cua-pi-runner.js';
 import type { SSEEvent } from '@dynflow/shared';
 import * as repo from '../db/repository.js';
 import * as sseFactory from '../sse/event-factory.js';
+import { logger } from '../logger.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -51,6 +55,39 @@ export class WorkflowRuntime {
 
   abort(): void {
     this.aborted = true;
+    // Forward abort to the runner so any host-privileged child processes
+    // (e.g., PiDirectRunner's `pi` process) are terminated. Without this,
+    // the workflow's stopped status is recorded in the DB, but the local
+    // `pi` process continues modifying the host filesystem until its own
+    // timeout — a real safety concern for `pi-direct` because the runner
+    // runs on the host without a container boundary.
+    //
+    // IMPORTANT: we only forward abort to the runner if its `cleanup()`
+    // is per-instance safe. `DockerAgentRunner.cleanup()` and
+    // `CuaAgentRunner.cleanup()` both do label-based removal of ALL
+    // `dynflow` containers globally, which would kill containers belonging
+    // to other active workflows. We detect that case by checking whether
+    // the constructor is `PiDirectRunner`, `PiCuaNativeRunner`, or
+    // `CuaPiRunner` (all iterate their own per-instance processRegistry /
+    // AbortController map). For Docker/Cua we still rely on the natural
+    // phase boundary to stop new agents from launching — the existing
+    // in-flight container will complete on its own.
+    //
+    // We do this in a fire-and-forget manner because cleanup() is async
+    // and the abort path is synchronous.
+    if (
+      this.runner instanceof PiDirectRunner ||
+      this.runner instanceof PiCuaNativeRunner ||
+      this.runner instanceof CuaPiRunner
+    ) {
+      void this.runner.cleanup().catch((err) => {
+        logger.warn('runner cleanup during abort failed:', String(err));
+      });
+    } else {
+      logger.info(
+        'abort: runner is containerized; relying on phase boundary to stop new agents',
+      );
+    }
   }
 
   /**
@@ -266,8 +303,27 @@ export class WorkflowRuntime {
       }
     }
 
-    // 4. Mark workflow completed (the workflow itself completed execution even
-    //    if individual agents/phases had errors — this is the original behaviour).
+    // 4. Determine the final workflow status. If abort() was called during
+    //    execution (e.g., the user clicked Stop), the workflow must end as
+    //    `stopped`, not `completed`, even if all phases technically finished.
+    //    This prevents the in-flight phase results from overwriting a
+    //    user-requested stop.
+    if (this.aborted) {
+      const dbStatus = repo.getWorkflowRun(workflowRunId)?.status;
+      if (dbStatus !== 'stopped') {
+        repo.updateWorkflowStatus(workflowRunId, 'stopped');
+      }
+      // Emit a *stopped* event (not a completed event) so SSE consumers
+      // don't get a misleading "completed" signal for a stopped workflow.
+      this.streamManager.emit(
+        workflowRunId,
+        sseFactory.createWorkflowStoppedEvent(workflowRunId),
+      );
+      return;
+    }
+
+    // 4a. Mark workflow completed (the workflow itself completed execution even
+    //     if individual agents/phases had errors — this is the original behaviour).
     repo.updateWorkflowStatus(workflowRunId, 'completed');
     this.streamManager.emit(
       workflowRunId,

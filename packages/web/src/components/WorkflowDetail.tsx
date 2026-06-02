@@ -6,7 +6,7 @@ import StatusBadge from './StatusBadge';
 
 interface WorkflowDetailProps {
   workflowId: string;
-  onBack: () => void;
+  onBack?: () => void;
   /**
    * Optional callback fired when the user clicks the "Source: template v<n>"
    * pill on a workflow run that was created from a template. The parent
@@ -117,20 +117,22 @@ export default function WorkflowDetail({
   if (error) {
     return (
       <div>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#3b82f6',
-            cursor: 'pointer',
-            padding: 0,
-            marginBottom: 16,
-            fontSize: '0.875rem',
-          }}
-        >
-          &larr; Back to list
-        </button>
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#3b82f6',
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: 16,
+              fontSize: '0.875rem',
+            }}
+          >
+            &larr; Back to list
+          </button>
+        )}
         <div
           style={{
             padding: '8px 12px',
@@ -157,20 +159,22 @@ export default function WorkflowDetail({
 
   return (
     <div>
-      <button
-        onClick={onBack}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#3b82f6',
-          cursor: 'pointer',
-          padding: 0,
-          marginBottom: 16,
-          fontSize: '0.875rem',
-        }}
-      >
-        &larr; Back to list
-      </button>
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#3b82f6',
+            cursor: 'pointer',
+            padding: 0,
+            marginBottom: 16,
+            fontSize: '0.875rem',
+          }}
+        >
+          &larr; Back to list
+        </button>
+      )}
 
       <div
         style={{

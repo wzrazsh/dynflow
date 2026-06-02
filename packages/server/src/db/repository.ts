@@ -156,7 +156,7 @@ export function listWorkflowRuns(
     params.push(filters.templateId);
   }
   if (filters.sinceDays !== undefined) {
-    conditions.push('created_at >= datetime(\'now\', ?)');
+    conditions.push('julianday(created_at) >= julianday(\'now\', ?)');
     params.push(`-${filters.sinceDays} days`);
   }
 

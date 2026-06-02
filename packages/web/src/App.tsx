@@ -22,7 +22,7 @@ export type View = 'list' | 'detail' | 'create' | 'agents' | 'skills' | 'templat
 
 export default function App() {
   const [view, setView] = useState<View>('list');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId] = useState<string | null>(null);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);

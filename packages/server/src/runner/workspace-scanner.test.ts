@@ -32,6 +32,24 @@ describe('scanWorkspaceChanges', () => {
     expect(result.list).not.toContain('big.txt');
   });
 
+  it('excludes per-agent prompt files with UUID-style agent IDs (containing hyphens)', async () => {
+    writeFileSync(
+      join(workspace, '.dynflow-prompt-a1b2c3d4-e5f6-7890-abcd-ef1234567890-1700000000.md'),
+      '',
+    );
+    writeFileSync(
+      join(workspace, '.dynflow-prompt-simple_agent-1700000000.md'),
+      '',
+    );
+    writeFileSync(join(workspace, 'user-output.html'), '<h1>real artifact</h1>');
+    const result = await scanWorkspaceChanges(workspace);
+    expect(result.list).not.toContain(
+      '.dynflow-prompt-a1b2c3d4-e5f6-7890-abcd-ef1234567890-1700000000.md',
+    );
+    expect(result.list).not.toContain('.dynflow-prompt-simple_agent-1700000000.md');
+    expect(result.list).toContain('user-output.html');
+  });
+
   it('returns correct count and size', async () => {
     const result = await scanWorkspaceChanges(workspace);
     expect(result.count).toBe(2);

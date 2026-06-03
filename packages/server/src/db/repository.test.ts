@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { getDb, closeDb, withRetry } from './connection.js';
 import { initSchema } from './schema.js';
 import * as repo from './repository.js';
-import type { WorkflowDefinition } from '@dynflow/shared';
+import type { RuntimeConfig, WorkflowDefinition } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -815,5 +815,101 @@ describe('createWorkflowRun — template link', () => {
     });
     expect(run.templateId).toBe('tpl-abc');
     expect(run.templateVersion).toBeUndefined();
+  });
+});
+
+describe('createWorkflowRun — runtime config', () => {
+  it('stores and retrieves runtimeConfig', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const rc: RuntimeConfig = { runner: 'cua', llmProvider: 'opencode', model: 'gpt-4o' };
+    const run = repo.createWorkflowRun(def, 'With Config', { runtimeConfig: rc });
+    expect(run.runtimeConfig).toEqual(rc);
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched).toBeDefined();
+    expect(fetched!.runtimeConfig).toEqual(rc);
+  });
+
+  it('stores null runtime_config_json when not provided', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'No Config');
+    expect(run.runtimeConfig).toBeUndefined();
+  });
+
+  it('stores partial runtimeConfig', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const rc: RuntimeConfig = { runner: 'pi-direct' };
+    const run = repo.createWorkflowRun(def, 'Partial Config', { runtimeConfig: rc });
+    expect(run.runtimeConfig?.runner).toBe('pi-direct');
+    expect(run.runtimeConfig?.llmProvider).toBeUndefined();
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.runtimeConfig?.runner).toBe('pi-direct');
+  });
+});
+
+describe('getWorkflowRun — definition parsed', () => {
+  it('returns parsed definition from definition_json', () => {
+    const def: WorkflowDefinition = { name: 'test-flow', phases: [{ name: 'p1', agents: [{ name: 'a1', prompt: 'do' }] }] };
+    const run = repo.createWorkflowRun(def, 'Test Def');
+    expect(run.definition).toBeDefined();
+    expect(run.definition!.name).toBe('test-flow');
+    expect(run.definition!.phases).toHaveLength(1);
+  });
+
+  it('handles malformed definition_json gracefully', () => {
+    const db = getDb();
+    db.prepare(`INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run('bad-def', 'Bad', 'pending', '{invalid json}', '2024-01-01', '2024-01-01');
+
+    const fetched = repo.getWorkflowRun('bad-def');
+    expect(fetched).toBeDefined();
+    expect(fetched!.definition).toBeUndefined();
+  });
+});
+
+describe('updateWorkflowRun', () => {
+  it('updates runtimeConfig', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test');
+    expect(run.runtimeConfig).toBeUndefined();
+
+    const rc: RuntimeConfig = { runner: 'cua', model: 'gpt-4o' };
+    repo.updateWorkflowRun(run.id, { runtimeConfig: rc });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.runtimeConfig).toEqual(rc);
+  });
+
+  it('clears runtimeConfig to null', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test', { runtimeConfig: { runner: 'cua' } });
+    expect(run.runtimeConfig).toBeDefined();
+
+    repo.updateWorkflowRun(run.id, { runtimeConfig: null as unknown as RuntimeConfig });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.runtimeConfig).toBeUndefined();
+  });
+
+  it('updates status', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test');
+
+    repo.updateWorkflowRun(run.id, { status: 'running' });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.status).toBe('running');
+  });
+
+  it('ignores unknown fields', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test');
+
+    // @ts-expect-error — testing unknown field
+    repo.updateWorkflowRun(run.id, { nonExistent: 'value' });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched).toBeDefined();
   });
 });

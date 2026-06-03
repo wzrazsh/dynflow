@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, withRetry } from './connection.js';
+import { RuntimeConfigSchema } from '@dynflow/shared';
 import type {
   WorkflowDefinition,
   WorkflowListFilters,
@@ -17,6 +18,7 @@ import type {
   PredefinedAgent,
   Skill,
   SkillParameter,
+  RuntimeConfig,
 } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
@@ -36,7 +38,12 @@ import type {
 export function createWorkflowRun(
   definition: WorkflowDefinition,
   name: string,
-  opts?: { templateId?: string; templateVersion?: number; script?: string },
+  opts?: {
+    templateId?: string;
+    templateVersion?: number;
+    script?: string;
+    runtimeConfig?: RuntimeConfig;
+  },
 ): WorkflowRun {
   const db = getDb();
   const id = uuidv4();
@@ -48,9 +55,9 @@ export function createWorkflowRun(
          id, name, status, definition_json, created_at, updated_at,
          template_id, template_version,
          workspace_path, workspace_git_url, workspace_branch,
-         script
+         script, runtime_config_json
        )
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       name,
@@ -63,6 +70,7 @@ export function createWorkflowRun(
       definition.workspace?.git ?? null,
       definition.workspace?.branch ?? null,
       opts?.script ?? null,
+      opts?.runtimeConfig ? JSON.stringify(opts.runtimeConfig) : null,
     ),
   );
 
@@ -126,6 +134,8 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
     workspaceGitUrl: (workflow.workspace_git_url as string | null) ?? undefined,
     workspaceBranch: (workflow.workspace_branch as string | null) ?? undefined,
     script: (workflow.script as string | null) ?? undefined,
+    runtimeConfig: parseRuntimeConfig(workflow.runtime_config_json),
+    definition: parseDefinition(workflow.definition_json),
   };
 }
 
@@ -196,6 +206,44 @@ export function updateWorkflowStatus(
     db.prepare(
       'UPDATE workflow_runs SET status = ?, updated_at = ? WHERE id = ?',
     ).run(status, now, id),
+  );
+}
+
+/**
+ * Update a workflow run's mutable fields.
+ * Uses a whitelist approach — only known fields can be updated.
+ * For runtimeConfig: serializes to JSON; if null/undefined, stores NULL.
+ */
+export function updateWorkflowRun(
+  id: string,
+  partial: Partial<Pick<WorkflowRun, 'name' | 'status' | 'runtimeConfig'>>,
+): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const setClauses: string[] = ['updated_at = ?'];
+  const values: unknown[] = [now];
+
+  if (partial.name !== undefined) {
+    setClauses.push('name = ?');
+    values.push(partial.name);
+  }
+  if (partial.status !== undefined) {
+    setClauses.push('status = ?');
+    values.push(partial.status);
+  }
+  if (partial.runtimeConfig !== undefined) {
+    setClauses.push('runtime_config_json = ?');
+    values.push(
+      partial.runtimeConfig === null || partial.runtimeConfig === undefined
+        ? null
+        : JSON.stringify(partial.runtimeConfig),
+    );
+  }
+
+  values.push(id);
+  withRetry(() =>
+    db.prepare(`UPDATE workflow_runs SET ${setClauses.join(', ')} WHERE id = ?`).run(...values),
   );
 }
 
@@ -1037,4 +1085,43 @@ export function removeAgentSkill(agentId: string, skillId: string): void {
       )
       .run(agentId, skillId),
   );
+}
+
+// ---------------------------------------------------------------------------
+// JSON parsing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse `runtime_config_json` from the database into a RuntimeConfig object.
+ * Returns undefined if the column is NULL, empty, or contains invalid JSON
+ * that doesn't match the RuntimeConfigSchema.
+ */
+function parseRuntimeConfig(raw: unknown): RuntimeConfig | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    const result = RuntimeConfigSchema.safeParse(parsed);
+    return result.success ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Parse `definition_json` from the database into a WorkflowDefinition object.
+ * Uses basic structural validation (must have `name` and `phases` array).
+ * Returns undefined if the column is NULL, empty, or contains invalid JSON.
+ */
+function parseDefinition(raw: unknown): WorkflowDefinition | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  try {
+    const parsed = JSON.parse(raw) as WorkflowDefinition;
+    // Basic structural validation: must have name and phases
+    if (typeof parsed !== 'object' || !parsed || !parsed.name || !Array.isArray(parsed.phases)) {
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
 }

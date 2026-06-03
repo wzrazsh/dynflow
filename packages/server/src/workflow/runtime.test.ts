@@ -4,8 +4,7 @@ import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
 import { WorkflowRuntime } from './runtime.js';
 import type { AgentRunner, AgentRunConfig } from '../runner/types.js';
-import type { SSEEvent } from '@dynflow/shared';
-import type { WorkflowDefinition } from '@dynflow/shared';
+import type { RuntimeConfig, SSEEvent, WorkflowDefinition } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -448,6 +447,23 @@ describe('WorkflowRuntime', () => {
       expect(agent.output).toBeDefined();
       expect(agent.output!.length).toBeLessThanOrEqual(100_000 + '...[truncated]'.length);
       expect(agent.output).toMatch(/\.\.\.\[truncated\]$/);
+    });
+  });
+
+  describe('with runtimeConfig', () => {
+    it('accepts runtimeConfig in constructor', () => {
+      const rc: RuntimeConfig = { runner: 'cua', model: 'gpt-4o' };
+      const runner = new MockAgentRunner();
+      const stream = new MockStreamManager();
+      const runtime = new WorkflowRuntime(runner, stream, undefined, rc);
+      expect(runtime).toBeDefined();
+    });
+
+    it('accepts undefined runtimeConfig (backward compat)', () => {
+      const runner = new MockAgentRunner();
+      const stream = new MockStreamManager();
+      const runtime = new WorkflowRuntime(runner, stream);
+      expect(runtime).toBeDefined();
     });
   });
 });

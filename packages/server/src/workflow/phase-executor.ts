@@ -1,4 +1,4 @@
-import type { AgentRun } from '@dynflow/shared';
+import type { AgentRun, RuntimeConfig } from '@dynflow/shared';
 import type { AgentRunner, AgentRunConfig } from '../runner/types.js';
 
 // ---------------------------------------------------------------------------
@@ -68,10 +68,13 @@ export class PhaseExecutor {
    * @param runner           – the AgentRunner to delegate agent execution to
    * @param retryBaseDelayMs – base delay (ms) before the first retry on transient errors
    *                           (default 2000). Exposed for testability.
+   * @param runtimeConfig    – optional runtime configuration (model, llmProvider) used
+   *                           as defaults when agent-specific overrides are not set.
    */
   constructor(
     private runner: AgentRunner,
     private retryBaseDelayMs: number = 2000,
+    private runtimeConfig?: RuntimeConfig,
   ) {}
 
   /**
@@ -163,11 +166,13 @@ export class PhaseExecutor {
         const config: AgentRunConfig = {
           agentId: agent.id,
           prompt: agent.prompt,
-          model: agent.model ?? 'gpt-4o',
+          model: agent.model ?? this.runtimeConfig?.model ?? 'gpt-4o',
           timeoutMs: agent.timeoutMs ?? 300_000,
           openaiApiKey: apiKey,
           workspacePath: workspacePath ?? '',
           workspaceMount: '/app/output',
+          llmProvider: this.runtimeConfig?.llmProvider,
+          provider: this.runtimeConfig?.llmProvider,  // legacy alias
         };
         const result = await this.runner.run(config);
         const completedAt = new Date().toISOString();

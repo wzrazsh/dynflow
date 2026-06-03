@@ -4,7 +4,7 @@ import { PhaseExecutor } from './phase-executor.js';
 import { PiDirectRunner } from '../runner/pi-direct-runner.js';
 import { PiCuaNativeRunner } from '../runner/pi-cua-native-runner.js';
 import { CuaPiRunner } from '../runner/cua-pi-runner.js';
-import type { SSEEvent } from '@dynflow/shared';
+import type { RuntimeConfig, SSEEvent } from '@dynflow/shared';
 import * as repo from '../db/repository.js';
 import * as sseFactory from '../sse/event-factory.js';
 import { logger } from '../logger.js';
@@ -51,6 +51,7 @@ export class WorkflowRuntime {
     private runner: AgentRunner,
     private streamManager: { emit: (workflowId: string, event: SSEEvent) => void },
     private projectService?: ProjectService,
+    private runtimeConfig?: RuntimeConfig,
   ) {}
 
   abort(): void {
@@ -113,6 +114,10 @@ export class WorkflowRuntime {
     // 1. Load workflow from DB
     const workflowRun = repo.getWorkflowRun(workflowRunId);
     if (!workflowRun) throw new Error('Workflow not found');
+
+    // Resolve runtime config: run override wins, then constructor arg, then env-var defaults
+    const resolvedRuntimeConfig: RuntimeConfig | undefined =
+      workflowRun.runtimeConfig ?? this.runtimeConfig;
 
     const { projectName, version, outputDir: legacyOutputDir } = executeOpts ?? {};
 
@@ -189,7 +194,7 @@ export class WorkflowRuntime {
       );
 
       // Execute agents in parallel
-      const executor = new PhaseExecutor(this.runner);
+      const executor = new PhaseExecutor(this.runner, 2000, resolvedRuntimeConfig);
       const agents = repo.getPhaseAgents(phase.id);
       const maxConcurrency = 16;
 

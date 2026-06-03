@@ -1,5 +1,5 @@
 import { get, post } from './client';
-import type { WorkflowListFilters, WorkflowListResponse, WorkflowRun, ApiResponse, WorkflowDefinition } from '@dynflow/shared';
+import type { WorkflowListFilters, WorkflowListResponse, WorkflowRun, ApiResponse, WorkflowDefinition, RuntimeConfig, WorkspaceConfig } from '@dynflow/shared';
 
 export function fetchWorkflows(
   page = 1,
@@ -21,12 +21,23 @@ export function fetchWorkflow(id: string): Promise<ApiResponse<WorkflowRun>> {
   return get<ApiResponse<WorkflowRun>>(`/workflows/${id}`);
 }
 
-export function createWorkflow(name: string, script: string): Promise<ApiResponse<WorkflowRun>> {
-  return post<ApiResponse<WorkflowRun>>('/workflows', { name, script });
+export function createWorkflow(
+  name: string,
+  script: string,
+  options?: { workspace?: WorkspaceConfig; runtimeConfig?: RuntimeConfig },
+): Promise<ApiResponse<WorkflowRun>> {
+  const body: Record<string, unknown> = { name, script };
+  if (options?.workspace) body.workspace = options.workspace;
+  if (options?.runtimeConfig) body.runtimeConfig = options.runtimeConfig;
+  return post<ApiResponse<WorkflowRun>>('/workflows', body);
 }
 
-export function controlWorkflow(id: string, action: 'start' | 'pause' | 'resume' | 'stop'): Promise<ApiResponse<{ status: string }>> {
-  return post<ApiResponse<{ status: string }>>(`/workflows/${id}/${action}`, {});
+export function controlWorkflow(
+  id: string,
+  action: 'start' | 'pause' | 'resume' | 'stop',
+  body?: { runtimeConfig?: RuntimeConfig },
+): Promise<ApiResponse<{ status: string }>> {
+  return post<ApiResponse<{ status: string }>>(`/workflows/${id}/${action}`, body ?? {});
 }
 
 export interface OrchestrateResponse {

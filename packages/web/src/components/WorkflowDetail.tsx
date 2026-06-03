@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { WorkflowRun } from '@dynflow/shared';
+import type { WorkflowRun, SystemInfo, RuntimeConfig } from '@dynflow/shared';
 import { fetchWorkflow, controlWorkflow } from '../api/workflows';
+import { fetchSystemInfo } from '../api/system';
 import { useSSE } from '../hooks/useSSE';
 import StatusBadge from './StatusBadge';
+import RuntimeConfigChips from './RuntimeConfigChips';
+import StartRunDialog from './StartRunDialog';
 
 interface WorkflowDetailProps {
   workflowId: string;
@@ -29,6 +32,8 @@ export default function WorkflowDetail({
   const [error, setError] = useState<string | null>(null);
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [startDialogOpen, setStartDialogOpen] = useState(false);
 
   const loadWorkflow = useCallback(async () => {
     try {
@@ -59,6 +64,15 @@ export default function WorkflowDetail({
     }
   }, [events.length, loadWorkflow]);
 
+  // Fetch system info on mount
+  useEffect(() => {
+    fetchSystemInfo()
+      .then(res => {
+        if (res.success && res.data) setSystemInfo(res.data);
+      })
+      .catch(() => {});
+  }, []);
+
   // Initial load
   useEffect(() => {
     loadWorkflow();
@@ -76,6 +90,12 @@ export default function WorkflowDetail({
   async function handleControl(action: 'start' | 'pause' | 'resume' | 'stop') {
     setActionLoading(action);
     try {
+      if (action === 'start') {
+        // Open dialog instead of directly starting
+        setStartDialogOpen(true);
+        setActionLoading(null);
+        return;
+      }
       await controlWorkflow(workflowId, action);
       await loadWorkflow();
     } catch (err) {
@@ -84,6 +104,11 @@ export default function WorkflowDetail({
       setActionLoading(null);
     }
   }
+
+  const handleStartConfirm = useCallback(async (config: RuntimeConfig) => {
+    await controlWorkflow(workflowId, 'start', { runtimeConfig: config });
+    await loadWorkflow();
+  }, [workflowId, loadWorkflow]);
 
   function togglePhase(phaseId: string) {
     setExpandedPhases((prev) => {
@@ -157,24 +182,31 @@ export default function WorkflowDetail({
   const isPending = workflow.status === 'pending';
   const isTerminal = ['completed', 'failed', 'stopped'].includes(workflow.status);
 
+  // Resolve runtime config: run override wins, then definition default
+  const resolvedRuntimeConfig: RuntimeConfig | undefined =
+    workflow?.runtimeConfig ?? workflow?.definition?.runtimeConfig;
+  const hasRuntimeConfig = !!resolvedRuntimeConfig?.runner || !!resolvedRuntimeConfig?.llmProvider || !!resolvedRuntimeConfig?.model;
+  const chipsSource = workflow?.runtimeConfig ? 'override' : 'resolved';
+
   return (
-    <div>
-      {onBack && (
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#3b82f6',
-            cursor: 'pointer',
-            padding: 0,
-            marginBottom: 16,
-            fontSize: '0.875rem',
-          }}
-        >
-          &larr; Back to list
-        </button>
-      )}
+    <>
+      <div>
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#3b82f6',
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: 16,
+              fontSize: '0.875rem',
+            }}
+          >
+            &larr; Back to list
+          </button>
+        )}
 
       <div
         style={{
@@ -227,6 +259,18 @@ export default function WorkflowDetail({
       <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: '0.8125rem' }}>
         Created: {formatTime(workflow.createdAt)}
       </p>
+
+      {/* Runtime config chips */}
+      {hasRuntimeConfig && (
+        <div style={{ marginTop: 12, marginBottom: 12 }}>
+          <RuntimeConfigChips
+            runner={resolvedRuntimeConfig?.runner}
+            llmProvider={resolvedRuntimeConfig?.llmProvider}
+            model={resolvedRuntimeConfig?.model}
+            source={chipsSource}
+          />
+        </div>
+      )}
 
       {/* Control buttons */}
       {!isTerminal && (
@@ -497,7 +541,17 @@ export default function WorkflowDetail({
           );
         })}
       </div>
-    </div>
+      </div>
+
+    <StartRunDialog
+      open={startDialogOpen}
+      onClose={() => setStartDialogOpen(false)}
+      onConfirm={handleStartConfirm}
+      defaultRuntimeConfig={workflow?.definition?.runtimeConfig}
+      systemInfo={systemInfo}
+      workflowName={workflow?.name ?? ''}
+    />
+    </>
   );
 }
 

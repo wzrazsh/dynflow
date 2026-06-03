@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { createWorkflow, orchestrateWorkflow } from '../api/workflows';
-import type { WorkflowDefinition } from '@dynflow/shared';
+import { fetchSystemInfo } from '../api/system';
+import type { WorkflowDefinition, RuntimeConfig, SystemInfo } from '@dynflow/shared';
+import RuntimeConfigForm from './RuntimeConfigForm';
 
 const EXAMPLE_SCRIPT = `phase("Research", () => {
   agent("researcher-1", "Research quantum computing impact on cryptography");
@@ -24,6 +26,20 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
   const [userRequest, setUserRequest] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generatedScript, setGeneratedScript] = useState<string | null>(null);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig>({});
+
+  useEffect(() => {
+    fetchSystemInfo()
+      .then(res => {
+        if (res.success && res.data) {
+          setSystemInfo(res.data);
+        }
+      })
+      .catch(() => {
+        // Non-fatal — form still works without system info
+      });
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -40,7 +56,7 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
     setError(null);
 
     try {
-      const result = await createWorkflow(name.trim(), script.trim());
+      const result = await createWorkflow(name.trim(), script.trim(), { runtimeConfig });
       if (result.success) {
         onCreated();
       } else {
@@ -188,6 +204,23 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
               boxSizing: 'border-box',
             }}
           />
+        </div>
+
+        {/* Runtime Environment Configuration */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}>
+            Runtime Environment
+          </label>
+          {systemInfo ? (
+            <RuntimeConfigForm
+              value={runtimeConfig}
+              onChange={setRuntimeConfig}
+              systemInfo={systemInfo}
+              disabled={loading || generating}
+            />
+          ) : (
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading available options...</span>
+          )}
         </div>
 
         {mode === 'manual' ? (

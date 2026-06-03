@@ -1,10 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CreateWorkflowForm from './CreateWorkflowForm';
 
 vi.mock('../api/workflows', () => ({ createWorkflow: vi.fn() }));
 import { createWorkflow } from '../api/workflows';
+vi.mock('../api/system', () => ({
+  fetchSystemInfo: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      runners: [{ id: 'cua', label: 'Cua', description: 'Default', available: true }],
+      providers: [{ id: 'opencode', label: 'OpenCode', available: true }],
+      models: { opencode: ['gpt-4o'] },
+      defaults: { runner: 'cua', provider: 'opencode', model: 'gpt-4o' },
+    },
+  }),
+}));
 
 describe('CreateWorkflowForm', () => {
   const onBack = vi.fn();
@@ -85,5 +96,32 @@ describe('CreateWorkflowForm', () => {
     expect(screen.getByText('Creating...')).toBeDefined();
     expect((screen.getByLabelText('Workflow Name') as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText('Workflow Script') as HTMLTextAreaElement).disabled).toBe(true);
+  });
+
+  it('fetches systemInfo on mount', async () => {
+    const { fetchSystemInfo } = await import('../api/system');
+    render(<CreateWorkflowForm onBack={onBack} onCreated={onCreated} />);
+    await waitFor(() => {
+      expect(fetchSystemInfo).toHaveBeenCalled();
+    });
+  });
+
+  it('passes runtimeConfig to createWorkflow on submit', async () => {
+    vi.mocked(createWorkflow).mockResolvedValueOnce({
+      success: true,
+      data: { id: 'wf-1', name: 'Test', status: 'pending' as const, phases: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    });
+    render(<CreateWorkflowForm onBack={onBack} onCreated={onCreated} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Workflow Name'), 'Test');
+    await user.type(screen.getByLabelText('Workflow Script'), 'some script');
+    await user.click(screen.getByRole('button', { name: /Create Workflow/i }));
+    await waitFor(() => {
+      expect(createWorkflow).toHaveBeenCalledWith(
+        'Test',
+        'some script',
+        expect.objectContaining({ runtimeConfig: {} }),
+      );
+    });
   });
 });

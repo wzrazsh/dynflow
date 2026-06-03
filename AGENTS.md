@@ -1,4 +1,4 @@
-# AGENTS.md - DynFlow Development Guide
+﻿# AGENTS.md - DynFlow Development Guide
 
 ## Agent Identity
 
@@ -42,6 +42,59 @@ pending → running → paused → running → completed
 - Timeout via AbortController
 - Results captured from stdout JSON
 
+## Runtime Environment Configuration
+
+Users can specify which agent runner, LLM provider, and model to use per workflow.
+
+### Resolution Order
+
+Runtime configuration is resolved with the following priority (highest first):
+
+1. **Run override** — provided in the Start Run dialog when starting/resuming a workflow
+2. **Definition default** — set in the Create Workflow form when the workflow is created
+3. **Environment variable** — server-wide defaults when no runtime config is set
+
+### Three Dimensions
+
+- **Runner**: Which agent runner executes the workflow agents
+  - Options: `cua`, `cua-pi`, `pi-cua-native`, `pi-direct`, `docker`
+  - Fetched from `GET /api/system/info` — only available runners are shown
+- **Provider**: The LLM provider for agent prompts
+  - Options: `opencode`, `openai`, `anthropic`
+  - Filtered by available API keys (`OPENCODE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+- **Model**: Free-text model identifier
+  - Suggestions come from provider-specific hardcoded lists in `PROVIDER_MODELS`
+  - Any string accepted (no validation against known lists)
+
+### API Endpoints
+
+- `GET /api/system/info` — Returns available runners, providers, models, and defaults
+- `POST /api/workflows` — Accepts optional `runtimeConfig` in request body
+- `POST /:id/start` — Accepts optional `runtimeConfig` override with server-side validation
+- `POST /:id/resume` — Accepts optional `runtimeConfig` override
+
+### UI Components
+
+- **RuntimeConfigForm** — Reusable form with runner/provider dropdowns and model text input
+- **StartRunDialog** — Modal dialog with pre-populated defaults for starting workflows
+- **RuntimeConfigChips** — Read-only display showing resolved runner/provider/model
+
+### Runner Fixes
+
+Three Pi-based runners were fixed to respect `config.model` and `config.llmProvider`:
+
+- **CuaAgentRunner**: Added `--model` and `--provider` flags to the `docker exec pi` command
+- **CuaPiRunner**: Fixed sentinel bug where `'gpt-4o'` was ignored; now uses `config.llmProvider`
+- **PiDirectRunner**: Same sentinel fix; `buildChildEnv` uses `config.llmProvider`
+- **PiCuaNativeRunner**: `resolveModel` checks `config.model` before falling back to default
+
+### Storage
+
+- `runtime_config_json TEXT` column on `workflow_runs` table (migration v6)
+- Stored as JSON string, validated with zod `RuntimeConfigSchema` on read
+- Definition default stored as part of `definition_json`
+- Run override stored in `runtime_config_json`
+
 ## Development Commands
 
 ```bash
@@ -78,7 +131,8 @@ packages/
 │       ├── api/
 │       │   ├── workflows.ts      # CRUD endpoints
 │       │   ├── workflows-control.ts  # Start/pause/resume/stop
-│       │   └── sse.ts           # SSE streaming endpoint
+│       │   ├── sse.ts           # SSE streaming endpoint
+│       │   └── system.ts        # GET /api/system/info endpoint
 │       ├── sandbox/
 │       │   ├── isolated-runtime.ts  # JS script execution
 │       │   └── types.ts        # Sandbox types
@@ -107,13 +161,17 @@ packages/
 │       ├── main.tsx             # React entry point
 │       ├── api/
 │       │   ├── client.ts        # Fetch wrapper
-│       │   └── workflows.ts     # Workflow API functions
+│       │   ├── workflows.ts     # Workflow API functions
+│       │   └── system.ts        # fetchSystemInfo()
 │       ├── components/
 │       │   ├── WorkflowList.tsx      # Workflow list view
 │       │   ├── CreateWorkflowForm.tsx # Script editor
 │       │   ├── WorkflowDetail.tsx    # Detail with drill-down
 │       │   ├── StatusBadge.tsx       # Status indicator
-│       │   └── ErrorBoundary.tsx     # Error handler
+│       │   ├── StartRunDialog.tsx      # Start workflow modal dialog
+│       │   ├── RuntimeConfigChips.tsx  # Read-only runtime config display
+│       │   ├── RuntimeConfigForm.tsx   # Reusable runtime config form
+│       │   ├── ErrorBoundary.tsx     # Error handler
 │       └── hooks/
 │           └── useSSE.ts        # SSE custom hook
 ├── agent/                       # Legacy OpenAI-only Docker agent

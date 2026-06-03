@@ -82,3 +82,20 @@ describe('GET /api/system', () => {
     expect(res.body.data.defaults.provider).toBe('opencode');
   });
 });
+
+describe('GET /api/system/info', () => {
+  const app = express();
+  app.use('/api/system', systemRouter);
+
+  it('returns the same data as /api/system (frontend contract)', async () => {
+    process.env.OPENCODE_API_KEY = 'test-key';
+
+    const res = await request(app).get('/api/system/info');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty('runners');
+    expect(res.body.data).toHaveProperty('providers');
+    expect(res.body.data).toHaveProperty('models');
+    expect(res.body.data).toHaveProperty('defaults');
+  });
+});

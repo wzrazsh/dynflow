@@ -14,7 +14,7 @@ import { WslDockerAgentRunner } from '../runner/wsl-docker-runner.js';
 
 const router = Router();
 
-router.get('/', (_req, res) => {
+function getSystemInfo(_req: unknown, res: import('express').Response) {
   const runners = RUNNER_INFO.map((r) => {
     let available = false;
     switch (r.id) {
@@ -69,6 +69,9 @@ router.get('/', (_req, res) => {
   };
 
   res.json({ success: true, data });
-});
+}
+
+router.get('/', getSystemInfo);
+router.get('/info', getSystemInfo);
 
 export default router;

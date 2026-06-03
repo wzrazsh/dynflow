@@ -1,8 +1,12 @@
+import type { RuntimeConfig } from './system.js';
+
 // Core definition types
 export interface WorkflowDefinition {
   name: string;
   /** Optional: prepare a workspace directory before agents run. */
   workspace?: WorkspaceConfig;
+  /** Optional: configure runtime environment (runner, provider, model). */
+  runtimeConfig?: RuntimeConfig;
   phases: PhaseDefinition[];
 }
 
@@ -57,6 +61,10 @@ export interface WorkflowRun {
   workspaceBranch?: string;
   /** Original workflow script that produced this run. */
   script?: string;
+  /** Optional: runtime environment configuration for the run. */
+  runtimeConfig?: RuntimeConfig;
+  /** Optional: the validated workflow definition for the run. */
+  definition?: WorkflowDefinition;
 }
 
 export interface PhaseRun {

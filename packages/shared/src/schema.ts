@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RuntimeConfigSchema } from './system.js';
 import type { ValidationResult, ValidationError } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ const WorkflowDefinitionSchema = z
       .min(1, 'Workflow name is required')
       .max(200, 'Workflow name must not exceed 200 characters'),
     workspace: WorkspaceConfigSchema.optional(),
+    runtimeConfig: RuntimeConfigSchema.optional(),
     phases: z
       .array(PhaseSchema)
       .min(1, 'At least one phase is required')

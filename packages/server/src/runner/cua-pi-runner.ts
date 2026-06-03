@@ -196,7 +196,8 @@ export class CuaPiRunner implements AgentRunner {
     if (process.env.TEMP) env.TEMP = process.env.TEMP;
     if (process.env.LANG) env.LANG = process.env.LANG;
     if (config.openaiApiKey) {
-      switch (this.provider) {
+      const provider = config.llmProvider ?? this.provider;
+      switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
           env.OPENAI_API_KEY = config.openaiApiKey;
@@ -340,12 +341,13 @@ the result before declaring success.
 
     const shortInstruction = `Read the instructions in ${promptFile} and execute them. The Cua Computer Server is at ${this.cuaServerUrl}.`;
 
-    const model = config.model && !['gpt-4o'].includes(config.model) ? config.model : this.model;
+    const model = config.model ?? this.model;
+    const effectiveProvider = config.llmProvider ?? this.provider;
     const args = [
       '--print',
       '--no-session',
       '--mode', 'json',
-      '--provider', this.provider,
+      '--provider', effectiveProvider,
       '--model', model,
       '--append-system-prompt',
       `你的工作目录是 ${workDir}。请只在该目录内修改文件,不要访问其他路径。` +

@@ -99,7 +99,8 @@ export class PiDirectRunner implements AgentRunner {
     if (process.env.TEMP) env.TEMP = process.env.TEMP;
     if (process.env.LANG) env.LANG = process.env.LANG;
     if (config.openaiApiKey) {
-      switch (this.provider) {
+      const provider = config.llmProvider ?? this.provider;
+      switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
           env.OPENAI_API_KEY = config.openaiApiKey;
@@ -154,10 +155,8 @@ export class PiDirectRunner implements AgentRunner {
     await writeFile(promptFile, promptText, 'utf-8');
 
     // Resolve provider/model: prefer agent config, fall back to defaults.
-    const model = config.model && !['gpt-4o'].includes(config.model)
-      ? config.model
-      : this.model;
-    const provider = this.provider;
+    const model = config.model ?? this.model;
+    const provider = config.llmProvider ?? this.provider;
 
     // We pass a SHORT instruction that tells `pi` to read the prompt from
     // the file we just wrote. This keeps argv length bounded regardless of

@@ -296,7 +296,7 @@ export class PiCuaNativeRunner implements AgentRunner {
 
     // Resolve the model lazily so `getModel` failure becomes a graceful
     // error message rather than a crash at import time.
-    const model = await this.resolveModel();
+    const model = await this.resolveModel(config);
 
     const agentConfig: AgentLoopConfig = {
       model,
@@ -325,9 +325,10 @@ export class PiCuaNativeRunner implements AgentRunner {
     if (config.openaiApiKey) {
       agentConfig.apiKey = config.openaiApiKey;
     } else {
-      // Fall back to env-var name matching the provider so we don't
-      // send an OpenCode key to the Anthropic endpoint or vice versa.
-      const envKey = this.envApiKeyForProvider();
+      // Fall back to env-var name matching the (possibly overridden) provider
+      // so we don't send an OpenCode key to the Anthropic endpoint or vice versa.
+      const effectiveProvider = config.llmProvider ?? this.provider;
+      const envKey = this.envApiKeyForProvider(effectiveProvider);
       if (envKey) agentConfig.apiKey = envKey;
     }
 
@@ -833,20 +834,22 @@ When the task involves UI / web / game output, verify it by:
   // Model resolution
   // -------------------------------------------------------------------------
 
-  private async resolveModel(): Promise<AgentLoopConfig['model']> {
+  private async resolveModel(config?: { model?: string; llmProvider?: string }): Promise<AgentLoopConfig['model']> {
     const piAi = await import('@earendil-works/pi-ai');
+    const effectiveModel = config?.model ?? this.model;
+    const effectiveProvider = config?.llmProvider ?? this.provider;
     try {
       // `getModel`'s provider parameter is typed as the strict literal
-      // union `KnownProvider`. Our env-driven `this.provider` is a
+      // union `KnownProvider`. Our env-driven `effectiveProvider` is a
       // plain string; we cast to `never` and rely on the runtime lookup
       // to validate. If the provider is unknown, `getModel` throws.
       return piAi.getModel(
-        this.provider as Parameters<typeof piAi.getModel>[0],
-        this.model as Parameters<typeof piAi.getModel>[1],
+        effectiveProvider as Parameters<typeof piAi.getModel>[0],
+        effectiveModel as Parameters<typeof piAi.getModel>[1],
       ) as unknown as AgentLoopConfig['model'];
     } catch (err) {
       throw new Error(
-        `Failed to resolve model ${this.provider}/${this.model}: ${
+        `Failed to resolve model ${effectiveProvider}/${effectiveModel}: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -854,8 +857,9 @@ When the task involves UI / web / game output, verify it by:
   }
 
   /** Look up the env-var name for the configured provider. */
-  private envApiKeyForProvider(): string | undefined {
-    switch (this.provider) {
+  private envApiKeyForProvider(provider?: string): string | undefined {
+    const p = provider ?? this.provider;
+    switch (p) {
       case 'openai':
       case 'azure-openai-responses':
         return process.env.OPENAI_API_KEY;

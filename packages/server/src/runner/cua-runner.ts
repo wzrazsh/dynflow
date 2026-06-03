@@ -18,6 +18,10 @@ export interface CuaRunnerOptions {
   cpu?: string;
   /** VNC display resolution inside the container. */
   display?: string;
+  /** Pre-assigned noVNC host port (bypasses pickFreePort). */
+  noVncPort?: number;
+  /** Pre-assigned Cua API host port (bypasses pickFreePort). */
+  cuaApiPort?: number;
 }
 
 /**
@@ -39,12 +43,16 @@ export class CuaAgentRunner implements AgentRunner {
   private readonly memory: string;
   private readonly cpu: string;
   private readonly display: string;
+  private readonly noVncPort?: number;
+  private readonly cuaApiPort?: number;
 
   constructor(options: CuaRunnerOptions = {}) {
     this.image = options.image ?? process.env.DYNFLOW_CUA_IMAGE ?? 'dynflow-cua-pi:latest';
     this.memory = options.memory ?? '2GB';
     this.cpu = options.cpu ?? '2';
     this.display = options.display ?? '1280x720';
+    this.noVncPort = options.noVncPort;
+    this.cuaApiPort = options.cuaApiPort;
   }
 
   static isAvailable(): boolean {
@@ -77,8 +85,9 @@ export class CuaAgentRunner implements AgentRunner {
     await mkdir(config.workspacePath, { recursive: true });
 
     // Pick a free host port for noVNC and computer-server.
-    const noVncPort = await pickFreePort(6900, 6999);
-    const cuaApiPort = await pickFreePort(8000, 8099);
+    // Tests can provide pre-assigned ports via constructor options to bypass port scan.
+    const noVncPort = this.noVncPort ?? await pickFreePort(6900, 6999);
+    const cuaApiPort = this.cuaApiPort ?? await pickFreePort(8000, 8099);
 
     // Build and run the container in detached mode.
     const containerId = await this.startContainer(config, noVncPort, cuaApiPort);
@@ -97,9 +106,16 @@ export class CuaAgentRunner implements AgentRunner {
       );
 
       // Run Pi inside the container via docker exec.
+      const piFlags = ['--mode json', '--no-session'];
+      if (config.model) {
+        piFlags.push(`--model ${config.model}`);
+      }
+      if (config.llmProvider) {
+        piFlags.push(`--provider ${config.llmProvider}`);
+      }
       const piCmd =
         `cd ${config.workspaceMount} && ` +
-        `pi --mode json --no-session "$(cat .dynflow-prompt.md)"`;
+        `pi ${piFlags.join(' ')} "$(cat .dynflow-prompt.md)"`;
       const { stdout } = await execAsync(
         `docker exec ${containerId} bash -lc ${shellQuote(piCmd)}`,
         { maxBuffer: 32 * 1024 * 1024, timeout: config.timeoutMs },

@@ -19,6 +19,10 @@ export interface AgentRunConfig {
   noVncUrl?: string;
   /** Cua computer-server API URL. */
   cuaApiUrl?: string;
+  /** LLM provider identifier (opencode/openai/anthropic). Overrides env var default. */
+  llmProvider?: string;
+  /** Legacy alias for llmProvider, used by PiDirectRunner's buildChildEnv. */
+  provider?: string;
 }
 
 export interface AgentResult {

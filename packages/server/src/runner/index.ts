@@ -5,7 +5,13 @@ import { PiDirectRunner } from './pi-direct-runner.js';
 import { CuaPiRunner } from './cua-pi-runner.js';
 import { PiCuaNativeRunner } from './pi-cua-native-runner.js';
 import type { AgentRunner } from './types.js';
+import type { RuntimeConfig } from '@dynflow/shared';
 import { logger } from '../logger.js';
+
+/**
+ * Union type of all supported runner identifiers.
+ */
+export type RunnerType = 'cua' | 'cua-pi' | 'pi-cua-native' | 'pi-direct' | 'docker';
 
 /**
  * Get the appropriate agent runner.
@@ -33,7 +39,13 @@ import { logger } from '../logger.js';
  * explicit-only — they require `DYNFLOW_RUNNER=pi-cua-native` or
  * `DYNFLOW_RUNNER=pi-direct` respectively.
  */
-export function createAgentRunner(): AgentRunner {
+export function createAgentRunner(override?: RuntimeConfig): AgentRunner {
+  // If a runner override is provided, use it explicitly, bypassing env-var
+  // checks and auto-detection.
+  if (override?.runner) {
+    return selectRunnerByName(override.runner);
+  }
+
   const explicit = process.env.DYNFLOW_RUNNER;
   if (explicit === 'docker') {
     logger.info('Runner: docker (legacy, DYNFLOW_RUNNER=docker)');
@@ -75,6 +87,34 @@ export function createAgentRunner(): AgentRunner {
   }
   logger.warn('Runner: cua + cua-pi unavailable, falling back to docker');
   return selectDockerRunner();
+}
+
+/**
+ * Select a runner by its string identifier.
+ * Throws a clear error if the runner is unknown.
+ */
+function selectRunnerByName(runnerId: string): AgentRunner {
+  switch (runnerId) {
+    case 'docker':
+      logger.info('Runner: docker (override)');
+      return selectDockerRunner();
+    case 'cua':
+      logger.info('Runner: cua (override)');
+      return new CuaAgentRunner();
+    case 'cua-pi':
+      logger.info('Runner: cua-pi (override)');
+      return new CuaPiRunner();
+    case 'pi-cua-native':
+      logger.info('Runner: pi-cua-native (override)');
+      return new PiCuaNativeRunner();
+    case 'pi-direct':
+      logger.info('Runner: pi-direct (override)');
+      return new PiDirectRunner();
+    default:
+      throw new Error(
+        `Unknown runner: "${runnerId}". Valid runners: cua, cua-pi, pi-cua-native, pi-direct, docker`,
+      );
+  }
 }
 
 /**

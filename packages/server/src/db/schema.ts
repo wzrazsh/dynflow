@@ -25,7 +25,8 @@ export function initSchema(): void {
       workspace_path TEXT,
       workspace_git_url TEXT,
       workspace_branch TEXT,
-      script TEXT
+      script TEXT,
+      runtime_config_json TEXT
     );
     -- Note: the idx_workflow_runs_template_id index is created in
     -- migration v3 so that older databases (where the template_id column

@@ -4,7 +4,7 @@ import { createApp } from '../app.js';
 import { getDb, closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
-import type { WorkflowDefinition } from '@dynflow/shared';
+import type { WorkflowDefinition, RuntimeConfig } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -306,5 +306,47 @@ describe('DELETE /api/workflows/:id', () => {
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe('Workflow not found');
+  });
+});
+
+describe('POST /api/workflows — runtimeConfig', () => {
+  it('accepts runtimeConfig and persists it', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/workflows')
+      .send({
+        name: 'With Config',
+        script: `phase("p1", () => { agent("a1", "do it"); });`,
+        runtimeConfig: { runner: 'pi-direct', llmProvider: 'opencode', model: 'gpt-4o' },
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.runtimeConfig).toBeDefined();
+    expect(res.body.data.runtimeConfig.runner).toBe('pi-direct');
+  });
+
+  it('returns 400 for invalid runtimeConfig', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/workflows')
+      .send({
+        name: 'Bad Config',
+        script: `phase("p1", () => { agent("a1", "do it"); });`,
+        runtimeConfig: { runner: 123 as unknown as string },
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('works without runtimeConfig (backward compat)', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/api/workflows')
+      .send({
+        name: 'No Config',
+        script: `phase("p1", () => { agent("a1", "do it"); });`,
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
   });
 });

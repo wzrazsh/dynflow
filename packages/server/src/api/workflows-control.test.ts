@@ -37,6 +37,38 @@ vi.mock('../sse/stream-manager.js', () => {
   };
 });
 
+// Mock runner modules for isAvailable() checks used in workflows-control.ts
+vi.mock('../runner/cua-runner.js', () => ({
+  CuaAgentRunner: class {
+    static isAvailable() { return true; }
+  },
+}));
+vi.mock('../runner/docker-runner.js', () => ({
+  DockerAgentRunner: class {
+    static isAvailable() { return false; }
+  },
+}));
+vi.mock('../runner/wsl-docker-runner.js', () => ({
+  WslDockerAgentRunner: class {
+    static isAvailable() { return false; }
+  },
+}));
+vi.mock('../runner/cua-pi-runner.js', () => ({
+  CuaPiRunner: class {
+    static isAvailable() { return false; }
+  },
+}));
+vi.mock('../runner/pi-direct-runner.js', () => ({
+  PiDirectRunner: class {
+    static isAvailable() { return false; }
+  },
+}));
+vi.mock('../runner/pi-cua-native-runner.js', () => ({
+  PiCuaNativeRunner: class {
+    static isAvailable() { return false; }
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -369,5 +401,73 @@ describe('API key scenarios', () => {
     // Workflow status remains 'paused'
     const saved = repo.getWorkflowRun(run.id)!;
     expect(saved.status).toBe('paused');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RuntimeConfig override scenarios
+// ---------------------------------------------------------------------------
+
+describe('POST /api/workflows/:id/start with runtimeConfig override', () => {
+  it('20 — accepts valid runtimeConfig and calls createAgentRunner with override', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    const res = await request(app).post(`/api/workflows/${run.id}/start`).send({
+      runtimeConfig: { runner: 'cua', model: 'gpt-4o' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('running');
+    expect(createAgentRunner).toHaveBeenCalledWith({ runner: 'cua', model: 'gpt-4o' });
+  });
+
+  it('21 — returns 400 when runner is not available', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    const res = await request(app).post(`/api/workflows/${run.id}/start`).send({
+      runtimeConfig: { runner: 'docker' },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not available');
+  });
+
+  it('22 — returns 400 for invalid runtimeConfig schema', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    const res = await request(app).post(`/api/workflows/${run.id}/start`).send({
+      runtimeConfig: { runner: 123 },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid runtime config');
+    expect(createAgentRunner).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/workflows/:id/resume with runtimeConfig override', () => {
+  it('23 — accepts runtimeConfig and calls createAgentRunner with override', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    repo.updateWorkflowStatus(run.id, 'paused');
+    const app = createApp();
+
+    const res = await request(app).post(`/api/workflows/${run.id}/resume`).send({
+      runtimeConfig: { runner: 'cua', model: 'gpt-4o' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('running');
+    expect(createAgentRunner).toHaveBeenCalledWith({ runner: 'cua', model: 'gpt-4o' });
+  });
+
+  it('24 — returns 400 when runner is not available on resume', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    repo.updateWorkflowStatus(run.id, 'paused');
+    const app = createApp();
+
+    const res = await request(app).post(`/api/workflows/${run.id}/resume`).send({
+      runtimeConfig: { runner: 'docker' },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not available');
   });
 });

@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import type { WorkflowRun, ApiResponse, WorkflowListResponse, WorkflowListFilters, WorkflowStatus } from '@dynflow/shared';
+import { RuntimeConfigSchema } from '@dynflow/shared';
+import type { RuntimeConfig } from '@dynflow/shared';
 import { executeScript } from '../sandbox/isolated-runtime.js';
 import * as repo from '../db/repository.js';
 
@@ -8,7 +10,7 @@ const router = Router();
 // POST /api/workflows — Create workflow from JS script
 router.post('/', async (req, res) => {
   try {
-    const { name, script, workspace } = req.body;
+    const { name, script, workspace, runtimeConfig } = req.body;
     if (!name || !script) {
       return res.status(400).json({ success: false, error: 'Name and script are required' });
     }
@@ -31,8 +33,23 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Validation failed', details: validation.errors });
     }
 
+    // Validate optional runtimeConfig
+    if (runtimeConfig !== undefined) {
+      const parsed = RuntimeConfigSchema.safeParse(runtimeConfig);
+      if (!parsed.success) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid runtime config',
+          details: parsed.error.issues,
+        });
+      }
+    }
+
     // Persist
-    const workflowRun = repo.createWorkflowRun(result.definition!, name, { script });
+    const workflowRun = repo.createWorkflowRun(result.definition!, name, {
+      script,
+      runtimeConfig: runtimeConfig !== undefined ? RuntimeConfigSchema.parse(runtimeConfig) : undefined,
+    });
     res.status(201).json({ success: true, data: workflowRun } as ApiResponse<WorkflowRun>);
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });

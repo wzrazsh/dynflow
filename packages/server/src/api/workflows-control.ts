@@ -8,6 +8,14 @@ import { ProjectService } from '../project/project-service.js';
 import { createAgentRunner } from '../runner/index.js';
 import { StreamManager } from '../sse/stream-manager.js';
 import type { WorkflowStatus } from '@dynflow/shared';
+import type { RuntimeConfig } from '@dynflow/shared';
+import { RuntimeConfigSchema } from '@dynflow/shared';
+import { CuaAgentRunner } from '../runner/cua-runner.js';
+import { CuaPiRunner } from '../runner/cua-pi-runner.js';
+import { PiDirectRunner } from '../runner/pi-direct-runner.js';
+import { PiCuaNativeRunner } from '../runner/pi-cua-native-runner.js';
+import { DockerAgentRunner } from '../runner/docker-runner.js';
+import { WslDockerAgentRunner } from '../runner/wsl-docker-runner.js';
 
 const router = Router();
 
@@ -20,6 +28,20 @@ const activeRuntimes = new Map<string, WorkflowRuntime>();
 // ProjectService singleton for output directory management
 // ---------------------------------------------------------------------------
 const projectService = new ProjectService();
+
+/**
+ * Check if a runner ID is available on this server.
+ */
+function isRunnerAvailable(runnerId: string): boolean {
+  switch (runnerId) {
+    case 'cua': return CuaAgentRunner.isAvailable();
+    case 'cua-pi': return CuaPiRunner.isAvailable();
+    case 'pi-cua-native': return PiCuaNativeRunner.isAvailable();
+    case 'pi-direct': return PiDirectRunner.isAvailable();
+    case 'docker': return DockerAgentRunner.isAvailable() || WslDockerAgentRunner.isAvailable();
+    default: return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET /:id — Retrieve a workflow run
@@ -56,8 +78,23 @@ router.post('/:id/start', (req, res) => {
     return res.status(400).json({ success: false, error: 'No API key found. Set OPENCODE_API_KEY or OPENAI_API_KEY.' });
   }
 
+  // Validate optional runtimeConfig override
+  let overrideConfig: RuntimeConfig | undefined;
+  if (req.body?.runtimeConfig !== undefined) {
+    const parsed = RuntimeConfigSchema.safeParse(req.body.runtimeConfig);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid runtime config', details: parsed.error.issues });
+    }
+    if (parsed.data.runner && !isRunnerAvailable(parsed.data.runner)) {
+      return res.status(400).json({ success: false, error: `Runner '${parsed.data.runner}' is not available on this server.` });
+    }
+    overrideConfig = parsed.data;
+    // Persist the override
+    repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
+  }
+
   const runtime = new WorkflowRuntime(
-    createAgentRunner(),
+    createAgentRunner(overrideConfig),
     StreamManager.getInstance(),
     projectService,
   );
@@ -130,6 +167,20 @@ router.post('/:id/resume', (req, res) => {
     return res.status(400).json({ success: false, error: 'No API key found. Set OPENCODE_API_KEY or OPENAI_API_KEY.' });
   }
 
+  // Check for runtime config override on resume
+  let resumeOverrideConfig: RuntimeConfig | undefined;
+  if (req.body?.runtimeConfig !== undefined) {
+    const parsed = RuntimeConfigSchema.safeParse(req.body.runtimeConfig);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid runtime config', details: parsed.error.issues });
+    }
+    if (parsed.data.runner && !isRunnerAvailable(parsed.data.runner)) {
+      return res.status(400).json({ success: false, error: `Runner '${parsed.data.runner}' is not available on this server.` });
+    }
+    resumeOverrideConfig = parsed.data;
+    repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
+  }
+
   // Remove stale runtime if present (from the original start before pause)
   const stale = activeRuntimes.get(run.id);
   if (stale) {
@@ -142,7 +193,7 @@ router.post('/:id/resume', (req, res) => {
   res.json({ success: true, data: { status: 'running' } });
 
   const runtime = new WorkflowRuntime(
-    createAgentRunner(),
+    createAgentRunner(resumeOverrideConfig),
     StreamManager.getInstance(),
     projectService,
   );

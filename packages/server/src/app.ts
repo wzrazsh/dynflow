@@ -12,6 +12,7 @@ import orchestrateRouter from './api/orchestrate.js'
 import metaRouter from './api/meta.js'
 import templatesRouter from './api/templates.js'
 import projectsRouter from './api/projects.js'
+import systemRouter from './api/system.js'
 
 export function createApp() {
   const app = express()
@@ -39,6 +40,7 @@ export function createApp() {
 
   app.use('/api/orchestrate', orchestrateRouter)
   app.use('/api/meta', metaRouter)
+  app.use('/api/system', systemRouter)
 
   return app
 }

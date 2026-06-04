@@ -144,9 +144,14 @@ in the same way.
 Strict mode requires the DynFlow server to be running as Administrator
 because applying a DACL to the workspace is a privileged operation.
 When strict mode is requested from a non-elevated server, the runner
-falls back to light mode and logs a clear warning. Light mode applies
-the `WRITE_RESTRICTED` token flag and the memory-cap Job Object, but
-does not touch the workspace DACL.
+falls back to light mode and logs a clear warning. Light mode runs
+the child under a duplicated copy of the server's own primary token
+(no `CreateRestrictedToken` call) and applies the memory-cap Job
+Object. It does not touch the workspace DACL, and it works fully
+non-elevated. Note: light mode gives weaker filesystem isolation
+than strict mode — the child sees the parent's filesystem under
+the server's normal user permissions, but is still capped by the
+Job Object's `KILL_ON_JOB_CLOSE` and `PROCESS_MEMORY` limits.
 
 #### Debugging
 

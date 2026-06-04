@@ -103,9 +103,13 @@ workflow("release-check", () => {
 Copy `.env.example` to `.env` and set credentials for agent execution:
 
 ```env
-# Cua + Pi agent (default runner)
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
+# Provider API keys (priority: OPENCODE_API_KEY > OPENAI_API_KEY > ANTHROPIC_API_KEY)
+OPENCODE_API_KEY=your_opencode_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Provider base URL override (used by OpenCode / OpenAI compatible proxies)
+OPENAI_BASE_URL=https://opencode.ai/zen/v1
 
 # Runner selection (default: cua)
 DYNFLOW_RUNNER=cua
@@ -113,13 +117,26 @@ DYNFLOW_RUNNER=cua
 # Cua image (when DYNFLOW_RUNNER=cua)
 DYNFLOW_CUA_IMAGE=dynflow-cua-pi:latest
 
+# Pi binary / provider / model overrides (cua-pi, pi-cua-native, pi-direct runners)
+DYNFLOW_PI_BINARY=pi
+DYNFLOW_PI_PROVIDER=opencode
+DYNFLOW_PI_MODEL=mimo-v2.5-free
+
+# Cua Computer Server (cua-pi and pi-cua-native runners)
+DYNFLOW_CUA_SERVER_URL=http://localhost:8000
+DYNFLOW_CUA_AUTOSTART=true
+DYNFLOW_PYTHON=python
+
 # Server
 PORT=3001
 DB_PATH=./data/workflows.db
 ```
 
-`OPENAI_API_KEY` is also supported for compatibility. The legacy OpenAI-only
-Docker agent is still available by setting `DYNFLOW_RUNNER=docker`.
+`OPENAI_API_KEY` is the legacy fallback used by the OpenAI-only Docker agent
+(set `DYNFLOW_RUNNER=docker`). The `cua`, `cua-pi`, `pi-cua-native`, and
+`pi-direct` runners additionally consume `OPENCODE_API_KEY` and
+`ANTHROPIC_API_KEY` and are configured through `DYNFLOW_PI_*` / `DYNFLOW_CUA_*`
+variables above.
 
 ## Building the Cua image
 

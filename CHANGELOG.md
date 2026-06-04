@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Runtime configuration system** — per-workflow runner / LLM provider / model selection
+- `GET /api/system/info` endpoint returning available runners, providers, models, and defaults
+- `RuntimeConfigSchema` (zod) and `runtime_config_json` column on `workflow_runs` (migration v6)
+- Resolution order: **run override → definition default → env var** (3-tier priority)
+- `runtimeConfig` accepted on `POST /api/workflows`, `POST /:id/start`, `POST /:id/resume`
+- Five agent runners: `cua` (default), `cua-pi`, `pi-cua-native`, `pi-direct`, `docker` (legacy)
+- Three LLM providers: `opencode` (default), `openai`, `anthropic`
+- Web components: `RuntimeConfigForm` (reusable), `StartRunDialog` (start modal with pre-populated defaults), `RuntimeConfigChips` (read-only display)
+- `RuntimeConfigForm` integrated into `CreateWorkflowForm` and `WorkflowDetail`
+- `PROVIDER_MODELS` hardcoded suggestions in `packages/shared/src/system.ts`
+- API-level integration tests: `runtime-config.integration.test.ts`, `multi-agent-flow.test.ts`
+
+### Fixed
+- All four Pi-based runners (`CuaAgentRunner`, `CuaPiRunner`, `PiCuaNativeRunner`, `PiDirectRunner`) now respect `config.model` and `config.llmProvider`
+- `CuaAgentRunner` passes `--model` and `--provider` flags to `docker exec pi`
+- Sentinel bug where `'gpt-4o'` was hardcoded in `CuaPiRunner` and `PiDirectRunner` — now uses `config.llmProvider`
+- `PiCuaNativeRunner.resolveModel` checks `config.model` before falling back to default
+
 ## [0.2.0] - 2026-05-31
 
 ### Added

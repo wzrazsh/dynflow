@@ -11,7 +11,10 @@ DynFlow is a web-based multi-agent workflow orchestration system with:
 - **Backend**: Express + TypeScript server (port 3001)
 - **Frontend**: React + Vite SPA (port 5173)
 - **Database**: SQLite with WAL mode
-- **Agent Execution**: Docker containers with OpenAI GPT integration
+- **Agent Execution**: Pluggable runners — `cua` (default, Pi in Cua XFCE container),
+  `cua-pi` / `pi-cua-native` (Pi + Cua Computer Server, no Pi-in-container),
+  `pi-direct` (host Pi CLI, opt-in), and `docker` (legacy OpenAI-only).
+  Providers: `opencode` (default), `openai`, `anthropic`.
 - **Sandbox**: isolated-vm V8 isolates + fallback pattern parser
 
 ## Architecture Decisions
@@ -37,10 +40,34 @@ pending → running → paused → running → completed
 
 ### Agent Runner
 
-- Uses `fetch()` directly (no `openai` npm package)
-- Supports configurable `OPENAI_BASE_URL` for proxies
-- Timeout via AbortController
-- Results captured from stdout JSON
+DynFlow ships five agent runners. Selection happens in `packages/server/src/runner/index.ts`:
+
+- **`CuaAgentRunner`** (default) — starts the `dynflow-cua-pi` Docker image
+  (trycua/cua-xfce + `@earendil-works/pi-coding-agent`), mounts the
+  per-workflow workspace at `/home/cua/workspace`, then `docker exec`s
+  `pi --mode json --no-session` and parses JSONL events. Container stays
+  alive after the run for noVNC access.
+- **`CuaPiRunner`** — runs the local `pi` CLI on the host against a Cua
+  Computer Server (Python HTTP service) for sandboxed computer use.
+  No Docker required for the agent itself.
+- **`PiCuaNativeRunner`** — in-process Pi agent that calls
+  `runAgentLoop` from `@earendil-works/pi-agent-core` with custom
+  Cua-backed `AgentTool[]` definitions. No CLI fork, no JSONL parsing.
+- **`PiDirectRunner`** — runs the local `pi` CLI directly, with no
+  sandbox. **Opt-in only**, host-privileged, requires
+  `DYNFLOW_RUNNER=pi-direct`.
+- **`DockerAgentRunner` / `WslDockerAgentRunner`** — legacy
+  OpenAI-only Docker agent. WSL variant is auto-selected on Windows.
+  Uses `fetch()` directly (no `openai` npm package), supports
+  `OPENAI_BASE_URL` for proxies, aborts via `AbortController`, captures
+  results from stdout JSON.
+
+The Pi-based runners (`CuaAgentRunner`, `CuaPiRunner`,
+`PiCuaNativeRunner`, `PiDirectRunner`) honor `config.model` and
+`config.llmProvider` from the per-run `RuntimeConfig` and can be
+overridden with `DYNFLOW_PI_MODEL` / `DYNFLOW_PI_PROVIDER` env vars.
+`PiCuaNativeRunner` and `PiDirectRunner` are **explicit-only** — they
+are not auto-selected even when their dependencies are available.
 
 ## Runtime Environment Configuration
 
@@ -88,6 +115,22 @@ Three Pi-based runners were fixed to respect `config.model` and `config.llmProvi
 - **PiDirectRunner**: Same sentinel fix; `buildChildEnv` uses `config.llmProvider`
 - **PiCuaNativeRunner**: `resolveModel` checks `config.model` before falling back to default
 
+### Planned / Unimplemented Runners
+
+- **`WindowsNativeRunner`** (planned, not yet implemented) — Win32 Restricted
+  Token + Job Object isolation (Chrome/Edge/Firefox-style process sandbox)
+  via Koffi FFI. Intended to auto-select on Windows when Docker is
+  unavailable, opt-in via `DYNFLOW_RUNNER=windows-native`. Configurable
+  light/strict filesystem isolation (`DYNFLOW_WIN_SANDBOX_STRICT=1`).
+  Four companion PowerShell scripts will live at
+  `packages/server/scripts/sandbox/`. See
+  `.sisyphus/plans/windows-native-sandbox-runner.md` for the full
+  22-task implementation plan and the OpenAI Codex / Chromium references.
+
+  **AppContainer was explicitly rejected** during planning — the chosen
+  approach is Restricted Token + Job Object instead. The plan MUST NOT
+  add AppContainer as a fallback.
+
 ### Storage
 
 - `runtime_config_json TEXT` column on `workflow_runs` table (migration v6)
@@ -121,59 +164,97 @@ npx tsc -b
 packages/
 ├── shared/
 │   └── src/
-│       ├── types.ts          # All shared TypeScript types
-│       ├── schema.ts         # Zod validation schema
-│       └── index.ts          # Barrel exports
+│       ├── types.ts              # All shared TypeScript types
+│       ├── schema.ts             # Zod validation schema
+│       ├── system.ts             # RuntimeConfig / PROVIDER_MODELS / RUNNER_INFO
+│       ├── agent-registry.ts     # Agent registry types
+│       ├── domain-registry.ts    # Domain registry types
+│       ├── skill-registry.ts     # Skill registry types
+│       └── index.ts              # Barrel exports
 ├── server/
 │   └── src/
-│       ├── index.ts          # Server entry point
-│       ├── app.ts            # Express app factory
-│       ├── api/
-│       │   ├── workflows.ts      # CRUD endpoints
-│       │   ├── workflows-control.ts  # Start/pause/resume/stop
-│       │   ├── sse.ts           # SSE streaming endpoint
-│       │   └── system.ts        # GET /api/system/info endpoint
-│       ├── sandbox/
-│       │   ├── isolated-runtime.ts  # JS script execution
-│       │   └── types.ts        # Sandbox types
-│       ├── workflow/
-│       │   ├── state-machine.ts    # Workflow FSM
-│       │   ├── phase-executor.ts   # Parallel agent orchestration
-│       │   └── runtime.ts         # Full workflow runtime
-│       ├── runner/
+│       ├── index.ts              # Server entry point
+│       ├── app.ts                # Express app factory
+│       ├── logger.ts             # Pino-style logger
+│       ├── agent/                # Agent registry (CRUD + predefined)
+│       ├── api/                  # HTTP routers
+│       │   ├── workflows.ts           # CRUD endpoints
+│       │   ├── workflows-control.ts   # Start / pause / resume / stop / fail / restart
+│       │   ├── sse.ts                 # SSE streaming endpoint
+│       │   ├── system.ts              # GET /api/system/info
+│       │   ├── domains.ts             # Domain registry
+│       │   ├── agent-sources.ts       # Agent source registry
+│       │   ├── predefined-agents.ts   # Predefined agent definitions
+│       │   ├── skills.ts              # Skill registry
+│       │   ├── templates.ts           # Workflow templates
+│       │   ├── projects.ts            # Project CRUD + workspace
+│       │   ├── orchestrate.ts         # LLM-powered workflow design
+│       │   └── meta.ts                # scan / extract / register GitHub projects
+│       ├── db/                   # SQLite: connection, schema, migrations, repository, template-repository
+│       ├── hook/                 # Lifecycle hook manager
+│       ├── integration/          # API-level integration tests (multi-agent-flow, runtime-config)
+│       ├── meta/                 # Project scanner / extractor / registrar modules
+│       ├── orchestrator/         # CandidateSelector + prompt builder for /api/orchestrate
+│       ├── project/              # Project service (workspace management, path validation)
+│       ├── runner/               # 5 agent runners + helpers
 │       │   ├── types.ts              # AgentRunner interface
-│       │   ├── cua-runner.ts         # Cua sandbox + Pi (default)
-│       │   ├── docker-runner.ts      # Legacy OpenAI-only Docker agent
-│       │   ├── wsl-docker-runner.ts  # WSL variant of legacy
+│       │   ├── cua-runner.ts         # CuaAgentRunner (default: dynflow-cua-pi container + Pi JSONL)
+│       │   ├── cua-pi-runner.ts       # CuaPiRunner (host Pi + Cua Computer Server)
+│       │   ├── cua-http-client.ts    # HTTP client for Cua Computer Server
+│       │   ├── pi-cua-native-runner.ts # PiCuaNativeRunner (in-process Pi + Cua tools)
+│       │   ├── pi-direct-runner.ts   # PiDirectRunner (host `pi` CLI, opt-in)
+│       │   ├── docker-runner.ts      # DockerAgentRunner (legacy OpenAI-only)
+│       │   ├── wsl-docker-runner.ts  # WslDockerAgentRunner (Windows WSL variant)
 │       │   ├── pi-output-parser.ts   # Parse Pi JSONL output
 │       │   ├── workspace-scanner.ts  # List changed files in workspace
-│       │   └── prompt-builder.ts     # Wrap user prompt w/ workspace context
-│       ├── db/
-│       │   ├── connection.ts      # SQLite connection + retry
-│       │   ├── schema.ts          # Table creation
-│       │   └── repository.ts      # CRUD operations
-│       └── sse/
-│           ├── stream-manager.ts  # SSE connection management
-│           └── event-factory.ts   # Typed event creation
+│       │   ├── prompt-builder.ts     # Wrap user prompt w/ workspace context
+│       │   └── index.ts              # createAgentRunner() + isDockerAvailable()
+│       ├── sandbox/              # isolated-vm + fallback parser
+│       ├── skill/                # Skill registry + executor
+│       ├── sse/                  # stream-manager + event-factory
+│       └── workflow/             # state-machine, phase-executor, runtime, generator
 ├── web/
 │   └── src/
-│       ├── App.tsx              # Main app with view routing
-│       ├── main.tsx             # React entry point
-│       ├── api/
-│       │   ├── client.ts        # Fetch wrapper
-│       │   ├── workflows.ts     # Workflow API functions
-│       │   └── system.ts        # fetchSystemInfo()
+│       ├── App.tsx               # Main app with view routing
+│       ├── main.tsx              # React entry point
+│       ├── api/                  # Fetch wrappers per backend resource
+│       │   ├── client.ts             # Fetch wrapper
+│       │   ├── workflows.ts          # Workflow API functions
+│       │   ├── templates.ts          # Template API
+│       │   ├── projects.ts           # Project API
+│       │   ├── registry.ts           # Domain / agent / skill registry API
+│       │   ├── skills.ts             # Skills API
+│       │   ├── meta.ts               # Meta-workflow API
+│       │   └── system.ts             # fetchSystemInfo()
 │       ├── components/
-│       │   ├── WorkflowList.tsx      # Workflow list view
-│       │   ├── CreateWorkflowForm.tsx # Script editor
-│       │   ├── WorkflowDetail.tsx    # Detail with drill-down
-│       │   ├── StatusBadge.tsx       # Status indicator
-│       │   ├── StartRunDialog.tsx      # Start workflow modal dialog
-│       │   ├── RuntimeConfigChips.tsx  # Read-only runtime config display
-│       │   ├── RuntimeConfigForm.tsx   # Reusable runtime config form
-│       │   ├── ErrorBoundary.tsx     # Error handler
+│       │   ├── Layout.tsx              # App shell
+│       │   ├── Sidebar.tsx             # Navigation
+│       │   ├── WorkflowList.tsx        # Workflow list view
+│       │   ├── WorkflowDrawer.tsx      # Workflow detail drawer
+│       │   ├── WorkflowDetail.tsx      # Detail with drill-down
+│       │   ├── WorkflowHistory.tsx     # Run history view
+│       │   ├── CreateWorkflowForm.tsx  # Script editor (with RuntimeConfigForm)
+│       │   ├── StartRunDialog.tsx      # Start workflow modal (with RuntimeConfigForm)
+│       │   ├── RuntimeConfigForm.tsx   # Reusable runner / provider / model form
+│       │   ├── RuntimeConfigChips.tsx  # Read-only resolved config display
+│       │   ├── StatusBadge.tsx         # Status indicator
+│       │   ├── ErrorBoundary.tsx       # React error boundary
+│       │   ├── Toast.tsx               # Toast notifications
+│       │   ├── TagPicker.tsx           # Tag selector
+│       │   ├── ViewCodeModal.tsx       # Code viewer modal
+│       │   ├── ImportExport.tsx        # Workflow import / export
+│       │   ├── MetaWorkflow.tsx        # Meta-workflow (scan / extract / register)
+│       │   ├── ProjectList.tsx         # Project list view
+│       │   ├── ProjectDetail.tsx       # Project detail view
+│       │   ├── AgentPicker.tsx         # Hierarchical agent picker
+│       │   ├── SkillPicker.tsx         # Skill picker with search / filters
+│       │   ├── TemplateList.tsx        # Template list
+│       │   ├── TemplateDetail.tsx      # Template detail
+│       │   ├── TemplateForm.tsx        # Template create / edit
+│       │   └── TemplateVersionHistory.tsx  # Template version history
 │       └── hooks/
-│           └── useSSE.ts        # SSE custom hook
+│           ├── useSSE.ts            # SSE custom hook
+│           └── useDebouncedValue.ts # Debounced value hook
 ├── agent/                       # Legacy OpenAI-only Docker agent
 │   ├── run.ts
 │   └── Dockerfile (node:22-alpine)
@@ -301,9 +382,10 @@ Verify with: `docker info` or `docker ps`
 
 ## Performance Considerations
 
-- Max 16 concurrent agents (configurable)
-- Agent timeout: 5 minutes default
-- Script timeout: 30 seconds
-- Memory limit: 128MB per sandbox
+- Max 16 concurrent agents (configurable, per-phase `maxConcurrency`)
+- Agent timeout: 5 minutes default (per-agent `timeoutMs`, schema max 10 min)
+- Script timeout: 30 seconds (`executeScript` `timeoutMs` default)
+- Memory limit: 512MB per legacy Docker agent container (`--memory=512m`),
+  2GB default per Cua agent container (configurable via `memory` option)
 - SQLite WAL mode for write performance
 - SSE heartbeat every 15 seconds

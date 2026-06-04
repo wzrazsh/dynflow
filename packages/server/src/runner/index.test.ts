@@ -82,6 +82,26 @@ vi.mock('./pi-direct-runner.js', () => ({
   },
 }));
 
+// WindowsNativeRunner mock: isAvailable() returns false on non-Windows
+// hosts (which is the test environment). The tests below override
+// isAvailable to exercise the auto-select chain and explicit override.
+vi.mock('./windows-native-runner.js', () => ({
+  WindowsNativeRunner: class {
+    static isAvailable() {
+      return false;
+    }
+    run() {
+      return Promise.resolve({ success: false, error: 'mock', containerId: '' });
+    }
+    stop() {
+      return Promise.resolve();
+    }
+    cleanup() {
+      return Promise.resolve();
+    }
+  },
+}));
+
 vi.mock('./docker-runner.js', () => ({
   DockerAgentRunner: class {
     static isAvailable() {
@@ -121,6 +141,7 @@ vi.mock('./wsl-docker-runner.js', () => ({
 // ---------------------------------------------------------------------------
 
 import { createAgentRunner, RunnerType } from './index.js';
+import { WindowsNativeRunner } from './windows-native-runner.js';
 
 describe('createAgentRunner selection chain', () => {
   const OLD_ENV = { ...process.env };
@@ -189,5 +210,85 @@ describe('createAgentRunner override', () => {
     process.env.DYNFLOW_RUNNER = 'pi-cua-native';
     const runner = createAgentRunner();
     expect(runner.constructor.name).toBe('PiCuaNativeRunner');
+  });
+});
+
+describe('createAgentRunner — WindowsNativeRunner', () => {
+  const OLD_ENV = { ...process.env };
+  let isAvailableSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAvailableSpy = vi.spyOn(WindowsNativeRunner, 'isAvailable');
+  });
+
+  afterEach(() => {
+    process.env = { ...OLD_ENV };
+    isAvailableSpy.mockRestore();
+  });
+
+  it('selects WindowsNativeRunner when DYNFLOW_RUNNER=windows-native is explicit', () => {
+    process.env.DYNFLOW_RUNNER = 'windows-native';
+    isAvailableSpy.mockReturnValue(true);
+    const runner = createAgentRunner();
+    expect(runner.constructor.name).toBe('WindowsNativeRunner');
+  });
+
+  it('throws when DYNFLOW_RUNNER=windows-native is set but not supported', () => {
+    process.env.DYNFLOW_RUNNER = 'windows-native';
+    isAvailableSpy.mockReturnValue(false);
+    expect(() => createAgentRunner()).toThrow(/does not support it/);
+  });
+
+  it('returns WindowsNativeRunner when override.runner=windows-native and supported', () => {
+    isAvailableSpy.mockReturnValue(true);
+    const runner = createAgentRunner({ runner: 'windows-native' });
+    expect(runner.constructor.name).toBe('WindowsNativeRunner');
+  });
+
+  it('throws when override.runner=windows-native but not supported', () => {
+    isAvailableSpy.mockReturnValue(false);
+    expect(() => createAgentRunner({ runner: 'windows-native' })).toThrow(
+      /does not support it/,
+    );
+  });
+
+  it('auto-selects WindowsNativeRunner when Cua/CuaPi are unavailable and WindowsNativeRunner is supported', () => {
+    delete process.env.DYNFLOW_RUNNER;
+    isAvailableSpy.mockReturnValue(true);
+    const runner = createAgentRunner();
+    expect(runner.constructor.name).toBe('WindowsNativeRunner');
+  });
+
+  it('does NOT auto-select WindowsNativeRunner when Cua is available (Cua takes priority)', async () => {
+    delete process.env.DYNFLOW_RUNNER;
+    isAvailableSpy.mockReturnValue(true);
+    // All other isAvailable mocks return false except Cua (we override).
+    const cuaSpy = vi.spyOn(
+      (await import('./cua-runner.js')).CuaAgentRunner,
+      'isAvailable',
+    ).mockReturnValue(true);
+    const runner = createAgentRunner();
+    expect(runner.constructor.name).toBe('CuaAgentRunner');
+    cuaSpy.mockRestore();
+  });
+
+  it('does NOT auto-select WindowsNativeRunner when CuaPi is available (CuaPi takes priority over WindowsNativeRunner)', async () => {
+    delete process.env.DYNFLOW_RUNNER;
+    isAvailableSpy.mockReturnValue(true);
+    const cuaPiSpy = vi.spyOn(
+      (await import('./cua-pi-runner.js')).CuaPiRunner,
+      'isAvailable',
+    ).mockReturnValue(true);
+    const runner = createAgentRunner();
+    expect(runner.constructor.name).toBe('CuaPiRunner');
+    cuaPiSpy.mockRestore();
+  });
+
+  it('does NOT auto-select WindowsNativeRunner when it reports unavailable', () => {
+    delete process.env.DYNFLOW_RUNNER;
+    isAvailableSpy.mockReturnValue(false);
+    // Falls through to Docker, which is also unavailable in this test.
+    expect(() => createAgentRunner()).toThrow('Docker is not available');
   });
 });

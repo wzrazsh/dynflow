@@ -22,7 +22,6 @@ import {
 } from './process-token.js';
 import {
   createRestrictedToken,
-  LIGHT_MODE_FLAGS,
   STRICT_MODE_FLAGS,
   type RestrictedTokenFlagSpec,
 } from './restricted-token.js';
@@ -147,42 +146,44 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
   const primaryToken = duplicateTokenEx(srcToken);
   closeHandle(srcToken);
 
-  // 3. Build the restricted token. Light mode is just WRITE_RESTRICTED.
-  //    Strict mode also disables max privileges and adds a synthetic SID
-  //    to the restrict list.
-  const flagSpec: RestrictedTokenFlagSpec = config.mode === 'strict' ? STRICT_MODE_FLAGS : LIGHT_MODE_FLAGS;
-
-  let syntheticSid: SidHandle | null = null;
-  let addRestrictSids: ReturnType<typeof allocateSyntheticSid>[] = [];
+  // 3. Build the token that will be passed to CreateProcessAsUserW.
+  //
+  // Light mode (non-elevated): just use the duplicated primary. We do
+  // NOT call CreateRestrictedToken here, because per MSDN, any token
+  // derived from CreateRestrictedToken requires the calling process
+  // to hold SE_ASSIGNPRIMARYTOKEN_PRIVILEGE to use it with
+  // CreateProcessAsUserW — even after DuplicateTokenEx to TokenPrimary.
+  // This is the same path the T1 spike validated non-elevated.
+  //
+  // Strict mode (requires admin): use CreateRestrictedToken with
+  // DISABLE_MAX_PRIVILEGE | SANDBOX_INERT | WRITE_RESTRICTED plus a
+  // synthetic SID. The result is an impersonation handle which we
+  // duplicate back to primary.
+  let tokenForCreateProcess: Handle;
+  let strictModeSid: ReturnType<typeof allocateSyntheticSid> | null = null;
   if (config.mode === 'strict') {
-    // Allocate a synthetic SID in the local NT authority that the
-    // DACL will grant access to.
-    syntheticSid = new SidHandle(allocateSyntheticSid(5, [80, 1000 + Math.floor(Math.random() * 1000)]));
-    addRestrictSids = [syntheticSid.sid];
-  }
-  const restrictedToken = createRestrictedToken(primaryToken, flagSpec, {
-    addRestrictSids,
-    denySids: [],
-    privilegesToDelete: [],
-  });
-  closeHandle(primaryToken);
-
-  // Per MSDN, CreateRestrictedToken returns a TokenImpersonation handle.
-  // CreateProcessAsUserW requires a primary token, so we duplicate the
-  // restricted token back to primary before passing it to the process
-  // creation call. This is the same pattern Chromium uses in
-  // restricted_token_utils.cc and what the T1 spike demonstrated.
-  const finalToken = duplicateTokenEx(restrictedToken, TokenAccess.TOKEN_ALL_ACCESS, { tokenType: 'primary' });
-  closeHandle(restrictedToken);
-  // We don't free the synthetic SID here — it's consumed by the
-  // restricted token. We track it via the syntheticSid handle but
-  // don't dispose it (the token holds the reference). It is freed
-  // when the restricted token is closed.
-  // For now, we mark the local SidHandle as disposed without calling
-  // freeSid on the inner SID (the OS now owns the SID copy).
-  if (syntheticSid) {
-    // Suppress the inner free by nulling out the buffer.
+    const syntheticSid = new SidHandle(allocateSyntheticSid(5, [80, 1000 + Math.floor(Math.random() * 1000)]));
+    strictModeSid = syntheticSid.sid;
+    const addRestrictSids: ReturnType<typeof allocateSyntheticSid>[] = [syntheticSid.sid];
+    const flagSpec: RestrictedTokenFlagSpec = STRICT_MODE_FLAGS;
+    const restrictedToken = createRestrictedToken(primaryToken, flagSpec, {
+      addRestrictSids,
+      denySids: [],
+      privilegesToDelete: [],
+    });
+    closeHandle(primaryToken);
+    // Synthetic SID is consumed by CreateRestrictedToken (which copies
+    // it). Suppress the inner free by nulling out the buffer.
     (syntheticSid as unknown as { _sid: null })._sid = null;
+
+    // CreateRestrictedToken returns a TokenImpersonation handle.
+    // Duplicate to primary for CreateProcessAsUserW.
+    tokenForCreateProcess = duplicateTokenEx(restrictedToken, TokenAccess.TOKEN_ALL_ACCESS, { tokenType: 'primary' });
+    closeHandle(restrictedToken);
+  } else {
+    // Light mode: use the duplicated primary directly. This is the
+    // T1 spike pattern that works non-elevated.
+    tokenForCreateProcess = primaryToken;
   }
 
   // 4. Create the job object with KILL_ON_JOB_CLOSE and the memory limit.
@@ -207,10 +208,10 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
   // 5. Strict mode: build a DACL granting access to the synthetic SID,
   //    back up the original, and apply.
   let daclHandle: DaclHandle | null = null;
-  if (config.mode === 'strict') {
+  if (config.mode === 'strict' && strictModeSid) {
     const originalAcl = getPathDacl(config.workspacePath);
     const newAcl = buildDacl([
-      { sid: addRestrictSids[0]!, accessMask: FileAccessMask.FILE_GENERIC_ALL, mode: 'grant' },
+      { sid: strictModeSid, accessMask: FileAccessMask.FILE_GENERIC_ALL, mode: 'grant' },
     ]);
     daclHandle = new DaclHandle(config.workspacePath, newAcl, originalAcl);
     daclHandle.apply();
@@ -240,7 +241,7 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
     // We don't call closeJobObject(jobHandle) again — the JobObject
     // wrapper already did.
     try {
-      closeHandle(finalToken);
+      closeHandle(tokenForCreateProcess);
     } catch (e) {
       logger('token close failed', e);
     }
@@ -250,7 +251,7 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
     // NOT need to be freed here.
   };
 
-  return { token: finalToken, job, dacl: daclHandle, cleanup };
+  return { token: tokenForCreateProcess, job, dacl: daclHandle, cleanup };
 }
 
 /**

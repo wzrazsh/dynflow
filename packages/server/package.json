@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:sandbox:windows": "cd ../.. && npx vitest run packages/server/src/runner/sandbox packages/server/src/runner/integration"
   },
   "dependencies": {
     "@dynflow/shared": "*",
@@ -17,6 +18,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "isolated-vm": "^6.1.2",
+    "koffi": "^3.0.2",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

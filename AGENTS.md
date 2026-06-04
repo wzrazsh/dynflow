@@ -40,7 +40,7 @@ pending → running → paused → running → completed
 
 ### Agent Runner
 
-DynFlow ships five agent runners. Selection happens in `packages/server/src/runner/index.ts`:
+DynFlow ships six agent runners. Selection happens in `packages/server/src/runner/index.ts`:
 
 - **`CuaAgentRunner`** (default) — starts the `dynflow-cua-pi` Docker image
   (trycua/cua-xfce + `@earendil-works/pi-coding-agent`), mounts the
@@ -84,7 +84,7 @@ Runtime configuration is resolved with the following priority (highest first):
 ### Three Dimensions
 
 - **Runner**: Which agent runner executes the workflow agents
-  - Options: `cua`, `cua-pi`, `pi-cua-native`, `pi-direct`, `docker`
+  - Options: `cua`, `cua-pi`, `pi-cua-native`, `pi-direct`, `docker`, `windows-native`
   - Fetched from `GET /api/system/info` — only available runners are shown
 - **Provider**: The LLM provider for agent prompts
   - Options: `opencode`, `openai`, `anthropic`
@@ -115,21 +115,108 @@ Three Pi-based runners were fixed to respect `config.model` and `config.llmProvi
 - **PiDirectRunner**: Same sentinel fix; `buildChildEnv` uses `config.llmProvider`
 - **PiCuaNativeRunner**: `resolveModel` checks `config.model` before falling back to default
 
-### Planned / Unimplemented Runners
+### Windows Native Runner
 
-- **`WindowsNativeRunner`** (planned, not yet implemented) — Win32 Restricted
-  Token + Job Object isolation (Chrome/Edge/Firefox-style process sandbox)
-  via Koffi FFI. Intended to auto-select on Windows when Docker is
-  unavailable, opt-in via `DYNFLOW_RUNNER=windows-native`. Configurable
-  light/strict filesystem isolation (`DYNFLOW_WIN_SANDBOX_STRICT=1`).
-  Four companion PowerShell scripts will live at
-  `packages/server/scripts/sandbox/`. See
-  `.sisyphus/plans/windows-native-sandbox-runner.md` for the full
-  22-task implementation plan and the OpenAI Codex / Chromium references.
+- **`WindowsNativeRunner`** — Win32 Restricted Token + Job Object
+  isolation (Chrome/Edge/Firefox-style process sandbox) via Koffi FFI.
+  Auto-selected on Windows when Docker is unavailable; opt-in via
+  `DYNFLOW_RUNNER=windows-native`. Configurable light/strict
+  filesystem isolation via `DYNFLOW_WIN_SANDBOX_STRICT=1`.
 
-  **AppContainer was explicitly rejected** during planning — the chosen
-  approach is Restricted Token + Job Object instead. The plan MUST NOT
-  add AppContainer as a fallback.
+#### How to enable
+
+```bash
+# Force the runner regardless of Docker availability
+DYNFLOW_RUNNER=windows-native npm run dev
+
+# Add strict-mode DACL isolation (requires elevated server)
+DYNFLOW_WIN_SANDBOX_STRICT=1 DYNFLOW_RUNNER=windows-native npm run dev
+```
+
+In the web UI's **Start Run** dialog, the runner dropdown lists
+`windows-native` only on hosts where `WindowsNativeRunner.isAvailable()`
+returns `true` (i.e., `process.platform === 'win32'` and Koffi loads
+without error). The `/api/system/info` endpoint reports availability
+in the same way.
+
+#### Strict mode
+
+Strict mode requires the DynFlow server to be running as Administrator
+because applying a DACL to the workspace is a privileged operation.
+When strict mode is requested from a non-elevated server, the runner
+falls back to light mode and logs a clear warning. Light mode applies
+the `WRITE_RESTRICTED` token flag and the memory-cap Job Object, but
+does not touch the workspace DACL.
+
+#### Debugging
+
+`isAvailable()` returns `false` for any of the following reasons. The
+error message printed at runner init identifies which one applies:
+
+1. **Not on Windows.** The runner is a no-op on Linux/macOS. The
+   auto-select chain skips it entirely.
+2. **Koffi not installed.** Verify with
+   `node -e "require('koffi'); console.log('ok')"` from
+   `packages/server/`. Re-run `npm install` if it fails.
+3. **Koffi struct size mismatch.** `verifyStructSizes()` throws if
+   `sizeof(STARTUPINFOW) !== 104`,
+   `sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) !== 144`, or
+   `sizeof(SECURITY_ATTRIBUTES) !== 24`. This usually means a
+   non-standard toolchain. The error message includes the actual
+   sizes for debugging.
+
+#### Test commands
+
+```bash
+# Unit tests (run on any platform, most mock the sandbox module)
+npx vitest run packages/server/src/runner/windows-native-runner.test.ts
+
+# Windows-only integration test (real Win32 calls)
+npx vitest run packages/server/src/runner/integration/windows-sandbox.integration.test.ts
+
+# Convenience target added by the package.json script
+npm run test:sandbox:windows --prefix packages/server
+```
+
+#### When this runner is auto-selected
+
+After `CuaAgentRunner` and `CuaPiRunner` fail their availability
+checks (typically: Docker not running, no `dynflow-cua-pi` image
+present, no Cua Computer Server detected), the auto-select chain
+checks `WindowsNativeRunner.isAvailable()` only on Windows hosts.
+The Docker path is still preferred when available, so on a Windows
+host with Docker Desktop running the chain never reaches the
+Windows Native runner.
+
+#### Companion PowerShell scripts
+
+Four operator-side scripts at
+`packages/server/scripts/sandbox/` cover manual recovery and
+inspection:
+
+- `New-SandboxProfile.ps1` — allocate a profile, apply DACL
+  (strict only).
+- `Start-SandboxedProcess.ps1` — launch a process under an
+  existing profile from PowerShell.
+- `Remove-SandboxProfile.ps1` — tear down, restore DACL.
+- `Get-SandboxProfiles.ps1` — list profiles and running PIDs.
+
+Full documentation:
+[`packages/server/scripts/sandbox/README.md`](packages/server/scripts/sandbox/README.md).
+
+#### Plan guardrails (do NOT change)
+
+- **AppContainer was explicitly rejected** during planning. The
+  chosen approach is Restricted Token + Job Object. Do not add
+  AppContainer as a fallback.
+- No GUI/tray icon for profile management. No antivirus / Defender
+  exclusion management. No Windows Event Log integration. No
+  profile persistence across runs (the TypeScript runner recreates
+  state per run; the PowerShell scripts persist to
+  `%LOCALAPPDATA%\dynflow\sandbox-profiles.json` for operator
+  convenience only).
+- Light mode must work non-elevated. Strict mode requires admin.
+  No changes that would force light mode to need admin.
 
 ### Storage
 
@@ -196,19 +283,23 @@ packages/
 │       ├── meta/                 # Project scanner / extractor / registrar modules
 │       ├── orchestrator/         # CandidateSelector + prompt builder for /api/orchestrate
 │       ├── project/              # Project service (workspace management, path validation)
-│       ├── runner/               # 5 agent runners + helpers
+│       ├── runner/               # 6 agent runners + helpers
 │       │   ├── types.ts              # AgentRunner interface
 │       │   ├── cua-runner.ts         # CuaAgentRunner (default: dynflow-cua-pi container + Pi JSONL)
 │       │   ├── cua-pi-runner.ts       # CuaPiRunner (host Pi + Cua Computer Server)
 │       │   ├── cua-http-client.ts    # HTTP client for Cua Computer Server
 │       │   ├── pi-cua-native-runner.ts # PiCuaNativeRunner (in-process Pi + Cua tools)
 │       │   ├── pi-direct-runner.ts   # PiDirectRunner (host `pi` CLI, opt-in)
+│       │   ├── windows-native-runner.ts # WindowsNativeRunner (Windows Restricted Token + Job Object)
+│       │   ├── sandbox/              # Koffi FFI wrappers for Win32 token/job/process/DACL
 │       │   ├── docker-runner.ts      # DockerAgentRunner (legacy OpenAI-only)
 │       │   ├── wsl-docker-runner.ts  # WslDockerAgentRunner (Windows WSL variant)
 │       │   ├── pi-output-parser.ts   # Parse Pi JSONL output
 │       │   ├── workspace-scanner.ts  # List changed files in workspace
 │       │   ├── prompt-builder.ts     # Wrap user prompt w/ workspace context
 │       │   └── index.ts              # createAgentRunner() + isDockerAvailable()
+│       ├── scripts/              # Operator-side scripts
+│       │   └── sandbox/             # Windows native sandbox PowerShell tools (4 scripts)
 │       ├── sandbox/              # isolated-vm + fallback parser
 │       ├── skill/                # Skill registry + executor
 │       ├── sse/                  # stream-manager + event-factory

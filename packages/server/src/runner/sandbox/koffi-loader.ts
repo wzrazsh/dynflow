@@ -32,8 +32,17 @@ export interface KoffiModule {
   pointer: (target: string | unknown, release?: boolean) => unknown;
   alias: (name: string, target: string) => void;
   decode: (ptr: unknown, target: unknown) => unknown;
-  encode: (ptr: unknown, value: unknown, target: unknown) => void;
-  alloc: (size: number) => unknown;
+  // koffi.encode has multiple signatures:
+  //   encode(ref, type, value)
+  //   encode(ref, offset, type, value)
+  //   encode(ref, offset, type, value, len)
+  // We model this as a single variadic function and let callers pick
+  // the right one.
+  encode: (...args: unknown[]) => void;
+  // koffi.alloc(type, length) — typed heap allocation.
+  alloc: (...args: unknown[]) => unknown;
+  // koffi.address(value) — returns the absolute address of an allocation.
+  address: (value: unknown) => bigint;
   free: (ptr: unknown) => void;
   // Koffi exposes many more APIs; we type only what we use.
   [key: string]: unknown;

@@ -8,6 +8,7 @@ import { parsePiJsonLines } from './pi-output-parser.js';
 import { scanWorkspaceChanges } from './workspace-scanner.js';
 import { buildPiPrompt } from './prompt-builder.js';
 import { killProcessTree } from './pi-direct-runner.js';
+import { resolvePiBinary } from './pi-binary.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,48 +23,12 @@ const MAX_BUFFER_BYTES = 64 * 1024 * 1024; // 64 MiB
 const PROBE_TIMEOUT_MS = 3000;
 
 /**
- * Resolve a Pi binary path to a (cmd, args) pair that can be execFile'd
- * without a shell. On Windows, npm-installed Pi is a `.cmd` shim that
- * requires `cmd.exe` to interpret — which we cannot use safely. Resolve
- * to the underlying `node dist/cli.js` invocation instead.
+ * Thin wrapper that adapts `resolvePiBinary()` (the shared module) to the
+ * `(cmd, args)` shape used internally by CuaPiRunner.
  */
-function resolvePiBinary(bin: string): { cmd: string; args: string[] } {
-  if (process.platform !== 'win32') return { cmd: bin, args: [] };
-
-  // Find the actual shim path. If `bin` is unqualified (just 'pi'),
-  // search PATH for the .cmd shim.
-  let shimPath = bin;
-  if (!/[\\/]/.test(bin)) {
-    const pathSep = process.platform === 'win32' ? ';' : ':';
-    const dirs = (process.env.PATH ?? '').split(pathSep).filter(Boolean);
-    for (const dir of dirs) {
-      for (const ext of ['.cmd', '.bat', '.ps1', '']) {
-        const candidate = join(dir, bin + ext);
-        if (existsSync(candidate)) {
-          shimPath = candidate;
-          break;
-        }
-      }
-      if (shimPath !== bin) break;
-    }
-  }
-  if (!/\.(cmd|bat|ps1)$/i.test(shimPath)) return { cmd: shimPath, args: [] };
-
-  // shimPath is a Windows shim — find the underlying node + cli.js.
-  const shimDir = shimPath.replace(/[\\/][^\\/]+$/, '');
-  const candidates = [
-    join(shimDir, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js'),
-    join(shimDir, '..', 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js'),
-    join(shimDir, '..', '..', 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js'),
-    join(shimDir, '..', '..', '..', 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'cli.js'),
-  ];
-  for (const cliPath of candidates) {
-    if (existsSync(cliPath)) {
-      return { cmd: process.execPath, args: [cliPath] };
-    }
-  }
-  // Fallback: still try the shim (may work via shell).
-  return { cmd: shimPath, args: [] };
+function resolvePiBinaryForRunner(bin: string): { cmd: string; args: string[] } {
+  const r = resolvePiBinary(bin, process.platform);
+  return { cmd: r.executable, args: r.args };
 }
 
 /** Default Cua Computer Server URL. Override via env DYNFLOW_CUA_SERVER_URL. */
@@ -149,7 +114,7 @@ export class CuaPiRunner implements AgentRunner {
    */
   static isAvailable(binaryOverride?: string): boolean {
     const bin = binaryOverride ?? process.env.DYNFLOW_PI_BINARY ?? 'pi';
-    const resolved = resolvePiBinary(bin);
+    const resolved = resolvePiBinaryForRunner(bin);
 
     // On POSIX, resolvePiBinary returns the binary name as-is without
     // searching PATH. Search PATH here so that a bare binary name like
@@ -358,7 +323,7 @@ the result before declaring success.
     // Resolve the binary: if it's a Windows .cmd shim, invoke the
     // underlying `node dist/cli.js` so we never need a shell. This is
     // identical to the probe's logic.
-    const resolved = resolvePiBinary(this.binary);
+    const resolved = resolvePiBinaryForRunner(this.binary);
     const resolvedArgs = resolved.args.concat(args);
 
     const containerId = `cua-pi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

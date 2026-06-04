@@ -53,7 +53,7 @@ import {
   SidHandle,
 } from './sid.js';
 import { enablePrivileges } from './privileges.js';
-import { type Handle, ProcessCreationFlags } from './types.js';
+import { type Handle, ProcessCreationFlags, TokenAccess } from './types.js';
 
 export { isKoffiAvailable, SandboxError, SandboxUnsupportedError };
 
@@ -166,6 +166,14 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
     privilegesToDelete: [],
   });
   closeHandle(primaryToken);
+
+  // Per MSDN, CreateRestrictedToken returns a TokenImpersonation handle.
+  // CreateProcessAsUserW requires a primary token, so we duplicate the
+  // restricted token back to primary before passing it to the process
+  // creation call. This is the same pattern Chromium uses in
+  // restricted_token_utils.cc and what the T1 spike demonstrated.
+  const finalToken = duplicateTokenEx(restrictedToken, TokenAccess.TOKEN_ALL_ACCESS, { tokenType: 'primary' });
+  closeHandle(restrictedToken);
   // We don't free the synthetic SID here — it's consumed by the
   // restricted token. We track it via the syntheticSid handle but
   // don't dispose it (the token holds the reference). It is freed
@@ -232,7 +240,7 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
     // We don't call closeJobObject(jobHandle) again — the JobObject
     // wrapper already did.
     try {
-      closeHandle(restrictedToken);
+      closeHandle(finalToken);
     } catch (e) {
       logger('token close failed', e);
     }
@@ -242,7 +250,7 @@ export function createSandbox(config: SandboxConfig, logger: CleanupLogger = def
     // NOT need to be freed here.
   };
 
-  return { token: restrictedToken, job, dacl: daclHandle, cleanup };
+  return { token: finalToken, job, dacl: daclHandle, cleanup };
 }
 
 /**

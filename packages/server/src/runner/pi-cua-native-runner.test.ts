@@ -132,6 +132,10 @@ afterEach(async () => {
 
 describe('PiCuaNativeRunner', () => {
   it('static isAvailable() returns true when the agent-core module is installed', async () => {
+    // vi.resetModules() clears the vitest module registry so the hoisted
+    // vi.mock is freshly applied. Under parallel load the module cache
+    // can have stale entries that cause import.meta.resolve to stall.
+    vi.resetModules();
     const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
     expect(PiCuaNativeRunner.isAvailable()).toBe(true);
   });

@@ -199,9 +199,10 @@ describe('listWorkflowRuns', () => {
     const result = repo.listWorkflowRuns(1, 10, {
       name: 'MathQuest',
       status: 'completed',
-      sinceDays: 0,
+      sinceDays: 1,
     });
     // Only wf-2 matches: name=MathQuest, status=completed, created "today"
+    // wf-1 has same name+status but is 8 days old, so sinceDays:1 excludes it
     expect(result.total).toBe(1);
     expect(result.runs[0].id).toBe('wf-2');
   });

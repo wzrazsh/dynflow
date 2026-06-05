@@ -595,6 +595,90 @@ describe('PiCuaNativeRunner', () => {
     expect(result.error).toMatch(/aborted|timeout/i);
   });
 
+  describe('model/provider resolution', () => {
+    it('uses config.model when set (sentinel fix: model not ignored)', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      // Constructor model is claude-sonnet, but config.model=gpt-4o should win
+      const runner = new PiCuaNativeRunner({
+        cuaServerUrl: `http://127.0.0.1:${cuaPort}`,
+        model: 'claude-sonnet-4-20250514',
+      });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+        model: 'gpt-4o',
+      });
+
+      // getModel should have been called with the config.model value, not the fallback
+      expect(mockGetModel).toHaveBeenCalledTimes(1);
+      const modelArg = mockGetModel.mock.calls[0][1];
+      expect(modelArg).toBe('gpt-4o');
+    });
+
+    it('falls back to this.model when config.model is not set', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      const runner = new PiCuaNativeRunner({
+        cuaServerUrl: `http://127.0.0.1:${cuaPort}`,
+        model: 'fallback-model',
+      });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+        // config.model intentionally omitted
+      });
+
+      expect(mockGetModel).toHaveBeenCalledTimes(1);
+      const modelArg = mockGetModel.mock.calls[0][1];
+      expect(modelArg).toBe('fallback-model');
+    });
+
+    it('uses config.llmProvider when set', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      // Constructor provider=anthropic, config.llmProvider=openai should win
+      const runner = new PiCuaNativeRunner({
+        cuaServerUrl: `http://127.0.0.1:${cuaPort}`,
+        provider: 'anthropic',
+      });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+        llmProvider: 'openai',
+      });
+
+      expect(mockGetModel).toHaveBeenCalledTimes(1);
+      const providerArg = mockGetModel.mock.calls[0][0];
+      expect(providerArg).toBe('openai');
+    });
+
+    it('falls back to constructor provider when config.llmProvider is not set', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      const runner = new PiCuaNativeRunner({
+        cuaServerUrl: `http://127.0.0.1:${cuaPort}`,
+        provider: 'anthropic',
+      });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+      });
+
+      expect(mockGetModel).toHaveBeenCalledTimes(1);
+      const providerArg = mockGetModel.mock.calls[0][0];
+      expect(providerArg).toBe('anthropic');
+    });
+  });
+
   it('run() writes nothing to the workspace under the .dynflow-prompt- pattern', async () => {
     const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
     const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });

@@ -262,6 +262,126 @@ describe('PiDirectRunner', () => {
     });
   });
 
+  describe('run() — model/provider selection', () => {
+    it('uses config.model even when it is "gpt-4o" (sentinel fix)', async () => {
+      const child = makeChildMock({ code: 0 });
+      const spawnMock = vi.fn().mockReturnValue(child);
+      vi.doMock('node:child_process', () => ({
+        execFile: () => Promise.reject(new Error('unused')),
+        execFileSync: () => Buffer.from('0.78.0'),
+        spawn: spawnMock,
+      }));
+      vi.resetModules();
+      const { PiDirectRunner: MockedRunner } = await import('./pi-direct-runner.js');
+      const runner = new MockedRunner({ binary: 'pi', model: 'claude-sonnet-4-20250514' });
+
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+        model: 'gpt-4o',
+      });
+
+      const args = spawnMock.mock.calls[0][1] as string[];
+      const modelIdx = args.indexOf('--model');
+      expect(modelIdx).not.toBe(-1);
+      expect(args[modelIdx + 1]).toBe('gpt-4o');
+    });
+
+    it('falls back to this.model when config.model is not set', async () => {
+      const child = makeChildMock({ code: 0 });
+      const spawnMock = vi.fn().mockReturnValue(child);
+      vi.doMock('node:child_process', () => ({
+        execFile: () => Promise.reject(new Error('unused')),
+        execFileSync: () => Buffer.from('0.78.0'),
+        spawn: spawnMock,
+      }));
+      vi.resetModules();
+      const { PiDirectRunner: MockedRunner } = await import('./pi-direct-runner.js');
+      const runner = new MockedRunner({ binary: 'pi', model: 'default-fallback-model' });
+
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+      });
+
+      const args = spawnMock.mock.calls[0][1] as string[];
+      const modelIdx = args.indexOf('--model');
+      expect(modelIdx).not.toBe(-1);
+      expect(args[modelIdx + 1]).toBe('default-fallback-model');
+    });
+
+    it('uses config.llmProvider for --provider arg and env var mapping', async () => {
+      const child = makeChildMock({ code: 0 });
+      const spawnMock = vi.fn().mockReturnValue(child);
+      vi.doMock('node:child_process', () => ({
+        execFile: () => Promise.reject(new Error('unused')),
+        execFileSync: () => Buffer.from('0.78.0'),
+        spawn: spawnMock,
+      }));
+      vi.resetModules();
+      const { PiDirectRunner: MockedRunner } = await import('./pi-direct-runner.js');
+      // provider=anthropic in constructor, config.llmProvider=openai should win
+      const runner = new MockedRunner({ binary: 'pi', provider: 'anthropic' });
+
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+        openaiApiKey: 'sk-test-key',
+        llmProvider: 'openai',
+      });
+
+      const args = spawnMock.mock.calls[0][1] as string[];
+      const providerIdx = args.indexOf('--provider');
+      expect(providerIdx).not.toBe(-1);
+      expect(args[providerIdx + 1]).toBe('openai');
+
+      // buildChildEnv should set OPENAI_API_KEY (openai provider), not ANTHROPIC_API_KEY
+      const env = spawnMock.mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(env.OPENAI_API_KEY).toBe('sk-test-key');
+      expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    });
+
+    it('falls back to constructor provider when config.llmProvider is not set', async () => {
+      const child = makeChildMock({ code: 0 });
+      const spawnMock = vi.fn().mockReturnValue(child);
+      vi.doMock('node:child_process', () => ({
+        execFile: () => Promise.reject(new Error('unused')),
+        execFileSync: () => Buffer.from('0.78.0'),
+        spawn: spawnMock,
+      }));
+      vi.resetModules();
+      const { PiDirectRunner: MockedRunner } = await import('./pi-direct-runner.js');
+      const runner = new MockedRunner({ binary: 'pi', provider: 'anthropic' });
+
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+        openaiApiKey: 'sk-anthropic-key',
+      });
+
+      const args = spawnMock.mock.calls[0][1] as string[];
+      const providerIdx = args.indexOf('--provider');
+      expect(providerIdx).not.toBe(-1);
+      expect(args[providerIdx + 1]).toBe('anthropic');
+
+      const env = spawnMock.mock.calls[0][2].env as NodeJS.ProcessEnv;
+      expect(env.ANTHROPIC_API_KEY).toBe('sk-anthropic-key');
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+    });
+  });
+
   describe('run() — error handling', () => {
     it('returns an error result when spawn throws', async () => {
       vi.doMock('node:child_process', () => ({

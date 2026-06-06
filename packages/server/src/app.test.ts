@@ -49,7 +49,6 @@ describe('Global error handler', () => {
     const app = createApp()
     const router = Router()
     router.get('/api/throw-string', () => {
-      // eslint-disable-next-line no-throw-literal
       throw 'string error'
     })
     app.use(router)

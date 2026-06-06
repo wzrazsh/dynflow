@@ -126,7 +126,6 @@ function requireKoffi(): unknown {
   // We use createRequire to load koffi as a CJS module from this
   // ESM file. This keeps the loader side-effect-free at module import
   // (koffi's native binding is only resolved when this function runs).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const req = createRequire(import.meta.url);
   return req('koffi');
 }

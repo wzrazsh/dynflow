@@ -123,7 +123,6 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
         abortRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedName, statusFilter, templateFilter, timeFilter, page, buildFilters]);
 
   // 5s auto-refresh — restarts when filters or page change
@@ -146,7 +145,6 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
       clearInterval(interval);
       controller.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedName, statusFilter, templateFilter, timeFilter, page, buildFilters]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

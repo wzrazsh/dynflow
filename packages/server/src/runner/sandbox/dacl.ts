@@ -295,7 +295,6 @@ export class DaclHandle implements Disposable {
       } catch (e) {
         // Best effort — log and continue. The PowerShell cleanup script
         // is the manual recovery path.
-        // eslint-disable-next-line no-console
         console.error(`[sandbox] failed to restore DACL on ${this._path}: ${String(e)}`);
       }
     }

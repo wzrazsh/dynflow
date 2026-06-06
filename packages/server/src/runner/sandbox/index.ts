@@ -109,10 +109,8 @@ type CleanupLogger = (msg: string, err?: unknown) => void;
 
 const defaultLogger: CleanupLogger = (msg, err) => {
   if (err) {
-    // eslint-disable-next-line no-console
     console.error(`[sandbox] ${msg}: ${String(err)}`);
   } else {
-    // eslint-disable-next-line no-console
     console.log(`[sandbox] ${msg}`);
   }
 };

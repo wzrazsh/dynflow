@@ -164,7 +164,6 @@ run share the same workspace; changes persist after the run completes.
 ```bash
 npm run build          # TypeScript build for all packages
 npm test               # Run the full Vitest suite
-npm run test:coverage  # Generate coverage
 npm run lint           # Run ESLint
 ```
 

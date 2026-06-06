@@ -914,3 +914,45 @@ describe('updateWorkflowRun', () => {
     expect(fetched).toBeDefined();
   });
 });
+
+describe('transitionWorkflowStatus', () => {
+  it('transitions from pending to running', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+
+    const result = repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+
+    expect(result).toBe(true);
+    const updated = repo.getWorkflowRun(run.id)!;
+    expect(updated.status).toBe('running');
+    expect(updated.updatedAt).not.toBe(run.updatedAt);
+  });
+
+  it('returns false when current status does not match expected', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+
+    // Try again from 'pending' — but the row is already 'running'
+    const result = repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+
+    expect(result).toBe(false);
+    const updated = repo.getWorkflowRun(run.id)!;
+    expect(updated.status).toBe('running');
+  });
+
+  it('returns false for a non-existent ID', () => {
+    const result = repo.transitionWorkflowStatus('non-existent', 'pending', 'running');
+
+    expect(result).toBe(false);
+  });
+
+  it('supports running -> paused -> running round-trip', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+
+    expect(repo.transitionWorkflowStatus(run.id, 'pending', 'running')).toBe(true);
+    expect(repo.transitionWorkflowStatus(run.id, 'running', 'paused')).toBe(true);
+    expect(repo.transitionWorkflowStatus(run.id, 'paused', 'running')).toBe(true);
+
+    const updated = repo.getWorkflowRun(run.id)!;
+    expect(updated.status).toBe('running');
+  });
+});

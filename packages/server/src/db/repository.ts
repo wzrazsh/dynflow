@@ -210,6 +210,31 @@ export function updateWorkflowStatus(
 }
 
 /**
+ * Atomically transition a workflow run from one status to another.
+ * The UPDATE only affects the row if the current status matches `from`,
+ * preventing race conditions when two callers try to transition the same
+ * run simultaneously.
+ *
+ * @returns `true` if exactly one row was updated, `false` otherwise.
+ */
+export function transitionWorkflowStatus(
+  id: string,
+  from: WorkflowStatus,
+  to: WorkflowStatus,
+): boolean {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = withRetry(() =>
+    db
+      .prepare(
+        'UPDATE workflow_runs SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
+      )
+      .run(to, now, id, from),
+  );
+  return result.changes === 1;
+}
+
+/**
  * Update a workflow run's mutable fields.
  * Uses a whitelist approach — only known fields can be updated.
  * For runtimeConfig: serializes to JSON; if null/undefined, stores NULL.

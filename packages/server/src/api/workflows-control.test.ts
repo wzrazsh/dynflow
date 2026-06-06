@@ -6,7 +6,7 @@ import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
 import type { WorkflowDefinition } from '@dynflow/shared';
 import { createAgentRunner } from '../runner/index.js';
-import controlRouter from './workflows-control.js';
+import controlRouter, { activeRuntimes } from './workflows-control.js';
 
 // ---------------------------------------------------------------------------
 // Mocks — prevent real Docker / SSE from running during tests
@@ -118,7 +118,7 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/workflows/:id/start', () => {
-  it('1 — start pending workflow → 200, response says running', async () => {
+  it('1 — start pending workflow → 200, DB updated atomically', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     const app = createApp();
 
@@ -129,6 +129,12 @@ describe('POST /api/workflows/:id/start', () => {
     expect(res.body.success).toBe(true);
     // The endpoint returns 'running' before async execution completes
     expect(res.body.data.status).toBe('running');
+
+    // Verify the atomic transition wrote to the DB immediately.
+    // The mocked runner may have already completed execution, so accept
+    // either 'running' or 'completed' — the key point is it left 'pending'.
+    const saved = repo.getWorkflowRun(run.id)!;
+    expect(['running', 'completed']).toContain(saved.status);
   });
 
   it('2 — start running workflow → 409', async () => {
@@ -144,7 +150,20 @@ describe('POST /api/workflows/:id/start', () => {
     expect(res.body.error).toMatch(/Cannot 'start'/);
   });
 
-  it('3 — start non-existent workflow → 404', async () => {
+  it('3 — start failed workflow → 409', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    repo.updateWorkflowStatus(run.id, 'failed');
+    const app = createApp();
+
+    const res = await request(app)
+      .post(`/api/workflows/${run.id}/start`)
+      .expect(409);
+
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/Cannot 'start'/);
+  });
+
+  it('4 — start non-existent workflow → 404', async () => {
     const app = createApp();
 
     const res = await request(app)
@@ -157,7 +176,7 @@ describe('POST /api/workflows/:id/start', () => {
 });
 
 describe('POST /api/workflows/:id/pause', () => {
-  it('4 — pause running workflow → 200', async () => {
+  it('5 — pause running workflow → 200', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'running');
     const app = createApp();
@@ -173,7 +192,7 @@ describe('POST /api/workflows/:id/pause', () => {
     expect(saved.status).toBe('paused');
   });
 
-  it('5 — pause completed workflow → 409', async () => {
+  it('6 — pause completed workflow → 409', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'completed');
     const app = createApp();
@@ -186,7 +205,7 @@ describe('POST /api/workflows/:id/pause', () => {
     expect(res.body.error).toMatch(/Cannot 'pause'/);
   });
 
-  it('6 — pause pending workflow → 409', async () => {
+  it('7 — pause pending workflow → 409', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     const app = createApp();
 
@@ -200,7 +219,7 @@ describe('POST /api/workflows/:id/pause', () => {
 });
 
 describe('POST /api/workflows/:id/resume', () => {
-  it('7 — resume paused workflow → 200', async () => {
+  it('8 — resume paused workflow → 200', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'paused');
     const app = createApp();
@@ -219,7 +238,7 @@ describe('POST /api/workflows/:id/resume', () => {
     expect(['running', 'completed']).toContain(saved.status);
   });
 
-  it('8 — resume running workflow → 409', async () => {
+  it('9 — resume running workflow → 409', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'running');
     const app = createApp();
@@ -234,7 +253,7 @@ describe('POST /api/workflows/:id/resume', () => {
 });
 
 describe('POST /api/workflows/:id/stop', () => {
-  it('9 — stop running workflow → 200', async () => {
+  it('10 — stop running workflow → 200', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'running');
     const app = createApp();
@@ -250,7 +269,7 @@ describe('POST /api/workflows/:id/stop', () => {
     expect(saved.status).toBe('stopped');
   });
 
-  it('10 — stop already stopped workflow → 409', async () => {
+  it('11 — stop already stopped workflow → 409', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'stopped');
     const app = createApp();
@@ -265,7 +284,7 @@ describe('POST /api/workflows/:id/stop', () => {
 });
 
 describe('GET /api/workflows/:id', () => {
-  it('11 — returns the workflow run', async () => {
+  it('12 — returns the workflow run', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     const app = createApp();
 
@@ -278,7 +297,7 @@ describe('GET /api/workflows/:id', () => {
     expect(res.body.data.status).toBe('pending');
   });
 
-  it('12 — returns 404 for non-existent', async () => {
+  it('13 — returns 404 for non-existent', async () => {
     const app = createApp();
 
     const res = await request(app)
@@ -290,7 +309,7 @@ describe('GET /api/workflows/:id', () => {
 });
 
 describe('Full lifecycle via status manipulation', () => {
-  it('13 — start→pause→resume→stop validates all transitions', async () => {
+  it('14 — start→pause→resume→stop validates all transitions', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Lifecycle');
     const app = createApp();
 
@@ -336,7 +355,7 @@ describe('API key scenarios', () => {
     phases: [{ name: 'p', agents: [{ name: 'a', prompt: 'work' }] }],
   };
 
-  it('14 — start with OPENCODE_API_KEY only → 200', async () => {
+  it('15 — start with OPENCODE_API_KEY only → 200', async () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     vi.stubEnv('OPENCODE_API_KEY', 'opencode-key');
     const run = repo.createWorkflowRun(sampleDef, 'Test');
@@ -345,7 +364,7 @@ describe('API key scenarios', () => {
     expect(res.body.data.status).toBe('running');
   });
 
-  it('15 — start with OPENAI_API_KEY only → 200', async () => {
+  it('16 — start with OPENAI_API_KEY only → 200', async () => {
     vi.stubEnv('OPENCODE_API_KEY', '');
     vi.stubEnv('OPENAI_API_KEY', 'openai-key');
     const run = repo.createWorkflowRun(sampleDef, 'Test');
@@ -354,7 +373,7 @@ describe('API key scenarios', () => {
     expect(res.body.data.status).toBe('running');
   });
 
-  it('16 — start with both set → OPENCODE_API_KEY wins, runner created', async () => {
+  it('17 — start with both set → OPENCODE_API_KEY wins, runner created', async () => {
     vi.stubEnv('OPENAI_API_KEY', 'openai-key');
     vi.stubEnv('OPENCODE_API_KEY', 'opencode-key');
     const run = repo.createWorkflowRun(sampleDef, 'Test');
@@ -364,7 +383,7 @@ describe('API key scenarios', () => {
     expect(createAgentRunner).toHaveBeenCalled();
   });
 
-  it('17 — start with neither set → 400, no runner created', async () => {
+  it('18 — start with neither set → 400, no runner created', async () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     vi.stubEnv('OPENCODE_API_KEY', '');
     const run = repo.createWorkflowRun(sampleDef, 'Test');
@@ -378,7 +397,7 @@ describe('API key scenarios', () => {
     expect(saved.status).toBe('pending');
   });
 
-  it('18 — resume with OPENCODE_API_KEY only → 200', async () => {
+  it('19 — resume with OPENCODE_API_KEY only → 200', async () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     vi.stubEnv('OPENCODE_API_KEY', 'opencode-key');
     const run = repo.createWorkflowRun(sampleDef, 'Test');
@@ -388,7 +407,7 @@ describe('API key scenarios', () => {
     expect(res.body.data.status).toBe('running');
   });
 
-  it('19 — resume with neither set → 400, workflow remains paused', async () => {
+  it('20 — resume with neither set → 400, workflow remains paused', async () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     vi.stubEnv('OPENCODE_API_KEY', '');
     const run = repo.createWorkflowRun(sampleDef, 'Test');
@@ -409,7 +428,7 @@ describe('API key scenarios', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/workflows/:id/start with runtimeConfig override', () => {
-  it('20 — accepts valid runtimeConfig and calls createAgentRunner with override', async () => {
+  it('21 — accepts valid runtimeConfig and calls createAgentRunner with override', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     const app = createApp();
 
@@ -421,7 +440,7 @@ describe('POST /api/workflows/:id/start with runtimeConfig override', () => {
     expect(createAgentRunner).toHaveBeenCalledWith({ runner: 'cua', model: 'gpt-4o' });
   });
 
-  it('21 — returns 400 when runner is not available', async () => {
+  it('22 — returns 400 when runner is not available', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     const app = createApp();
 
@@ -432,7 +451,7 @@ describe('POST /api/workflows/:id/start with runtimeConfig override', () => {
     expect(res.body.error).toContain('not available');
   });
 
-  it('22 — returns 400 for invalid runtimeConfig schema', async () => {
+  it('23 — returns 400 for invalid runtimeConfig schema', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     const app = createApp();
 
@@ -446,7 +465,7 @@ describe('POST /api/workflows/:id/start with runtimeConfig override', () => {
 });
 
 describe('POST /api/workflows/:id/resume with runtimeConfig override', () => {
-  it('23 — accepts runtimeConfig and calls createAgentRunner with override', async () => {
+  it('24 — accepts runtimeConfig and calls createAgentRunner with override', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'paused');
     const app = createApp();
@@ -459,7 +478,7 @@ describe('POST /api/workflows/:id/resume with runtimeConfig override', () => {
     expect(createAgentRunner).toHaveBeenCalledWith({ runner: 'cua', model: 'gpt-4o' });
   });
 
-  it('24 — returns 400 when runner is not available on resume', async () => {
+  it('25 — returns 400 when runner is not available on resume', async () => {
     const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
     repo.updateWorkflowStatus(run.id, 'paused');
     const app = createApp();
@@ -469,5 +488,121 @@ describe('POST /api/workflows/:id/resume with runtimeConfig override', () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('not available');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// activeRuntimes cleanup — verify try/finally always removes from registry
+// ---------------------------------------------------------------------------
+
+describe('activeRuntimes cleanup', () => {
+  it('26 — cleaned up after successful execution', async () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    await request(app).post(`/api/workflows/${run.id}/start`).expect(200);
+
+    // Wait for async execution to complete and finally to run
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(activeRuntimes.size).toBe(0);
+  });
+
+  it('27 — cleaned up after failed execution', async () => {
+    // Override the runner mock to reject
+    vi.mocked(createAgentRunner).mockImplementationOnce(() => ({
+      run: vi.fn().mockRejectedValue(new Error('deliberate failure')),
+      stop: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    await request(app).post(`/api/workflows/${run.id}/start`).expect(200);
+
+    // Wait for async execution to complete and finally to run
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // ActiveRuntimes cleaned up by finally regardless of outcome
+    expect(activeRuntimes.size).toBe(0);
+
+    // PhaseExecutor catches agent errors internally via Promise.allSettled,
+    // so runtime.execute() completes rather than rejects. The workflow will
+    // be marked 'completed' (not 'failed') — that's the existing behaviour.
+    const saved = repo.getWorkflowRun(run.id)!;
+    expect(['completed', 'completed_with_errors']).toContain(saved.status);
+  });
+
+  it('28 — cleaned up after stop', async () => {
+    // Use a deferred runner so the phase stays in-flight while we inject stop
+    let resolveRunner!: () => void;
+    const deferred = new Promise<void>((resolve) => { resolveRunner = resolve; });
+
+    vi.mocked(createAgentRunner).mockImplementationOnce(() => ({
+      run: vi.fn().mockReturnValue(deferred),
+      stop: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    await request(app).post(`/api/workflows/${run.id}/start`).expect(200);
+
+    // Wait for setImmediate to fire and runtime.execute() to block on the runner
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // Execution is in flight — runtime is in activeRuntimes
+    expect(activeRuntimes.size).toBe(1);
+
+    // Stop — aborts the runtime and removes from activeRuntimes
+    await request(app).post(`/api/workflows/${run.id}/stop`).expect(200);
+
+    // Stop handler already cleaned up; the async finally provides safe
+    // double-cleanup (Map.delete on missing key is a no-op)
+    expect(activeRuntimes.size).toBe(0);
+
+    // Resolve the runner so the promise chain unwinds without hanging
+    resolveRunner();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Still clean after the finally runs
+    expect(activeRuntimes.size).toBe(0);
+  });
+
+  it('29 — cleaned up after pause (runtime exits on paused status)', async () => {
+    // Use a deferred runner so we can control phase completion timing
+    let resolveRunner!: () => void;
+    const deferred = new Promise<void>((resolve) => { resolveRunner = resolve; });
+
+    vi.mocked(createAgentRunner).mockImplementationOnce(() => ({
+      run: vi.fn().mockReturnValue(deferred),
+      stop: vi.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    const app = createApp();
+
+    await request(app).post(`/api/workflows/${run.id}/start`).expect(200);
+
+    // Wait for setImmediate to fire and runtime.execute() to block on the runner
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // Runtime should still be in activeRuntimes during execution
+    expect(activeRuntimes.size).toBe(1);
+
+    // Pause the workflow — status set to 'paused'
+    await request(app).post(`/api/workflows/${run.id}/pause`).expect(200);
+
+    // Resolve the runner so the phase completes, causing runtime.execute()
+    // to finish (runtime checks status at phase boundary and exits early)
+    resolveRunner();
+
+    // Wait for runtime.execute() to unwind and finally to run
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(activeRuntimes.size).toBe(0);
   });
 });

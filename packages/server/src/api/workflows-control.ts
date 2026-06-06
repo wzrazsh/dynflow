@@ -92,6 +92,14 @@ router.post('/:id/start', (req, res) => {
     repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
   }
 
+  // Atomically claim the workflow — ensures only one caller transitions
+  // from 'pending' to 'running', preventing race conditions on concurrent
+  // start requests.
+  const claimed = repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is already running or in an invalid state.' });
+  }
+
   const runtime = new WorkflowRuntime(
     createAgentRunner(overrideConfig),
     StreamManager.getInstance(),
@@ -110,9 +118,10 @@ router.post('/:id/start', (req, res) => {
   // Respond immediately, then start execution asynchronously
   res.json({ success: true, data: { status: 'running' } });
 
-  setImmediate(() => {
-    runtime.execute(run.id, apiKey, optsToPass).catch((err: unknown) => {
-      activeRuntimes.delete(run.id);
+  setImmediate(async () => {
+    try {
+      await runtime.execute(run.id, apiKey, optsToPass);
+    } catch (err: unknown) {
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
         type: 'workflow_failed',
@@ -120,7 +129,9 @@ router.post('/:id/start', (req, res) => {
         timestamp: new Date().toISOString(),
         data: { error: String(err) },
       });
-    });
+    } finally {
+      activeRuntimes.delete(run.id);
+    }
   });
 });
 
@@ -140,7 +151,11 @@ router.post('/:id/pause', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  repo.updateWorkflowStatus(run.id, 'paused');
+  // Atomically transition from 'running' to 'paused'
+  const claimed = repo.transitionWorkflowStatus(run.id, 'running', 'paused');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is not in a running state.' });
+  }
   return res.json({ success: true, data: { status: 'paused' } });
 });
 
@@ -187,8 +202,13 @@ router.post('/:id/resume', (req, res) => {
     activeRuntimes.delete(run.id);
   }
 
+  // Atomically transition from 'paused' to 'running'
+  const claimed = repo.transitionWorkflowStatus(run.id, 'paused', 'running');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is not in a paused state.' });
+  }
+
   // Respond immediately, then start execution in the next tick
-  repo.updateWorkflowStatus(run.id, 'running');
   res.json({ success: true, data: { status: 'running' } });
 
   const runtime = new WorkflowRuntime(
@@ -206,9 +226,10 @@ router.post('/:id/resume', (req, res) => {
   if (req.body?.outputDir) executeOpts.outputDir = req.body.outputDir;
   const optsToPass = Object.keys(executeOpts).length > 0 ? executeOpts : undefined;
 
-  setImmediate(() => {
-    runtime.execute(run.id, apiKey, optsToPass).catch((err: unknown) => {
-      activeRuntimes.delete(run.id);
+  setImmediate(async () => {
+    try {
+      await runtime.execute(run.id, apiKey, optsToPass);
+    } catch (err: unknown) {
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
         type: 'workflow_failed',
@@ -216,7 +237,9 @@ router.post('/:id/resume', (req, res) => {
         timestamp: new Date().toISOString(),
         data: { error: String(err) },
       });
-    });
+    } finally {
+      activeRuntimes.delete(run.id);
+    }
   });
 });
 
@@ -237,7 +260,12 @@ router.post('/:id/stop', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  repo.updateWorkflowStatus(run.id, 'stopped');
+  // Atomically transition from 'running' or 'paused' to 'stopped'
+  const claimed = repo.transitionWorkflowStatus(run.id, 'running', 'stopped')
+    || repo.transitionWorkflowStatus(run.id, 'paused', 'stopped');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is not running or paused.' });
+  }
 
   // Abort active runtime instance if present
   const active = activeRuntimes.get(run.id);
@@ -311,4 +339,5 @@ function escapeScriptString(value: string): string {
     .replace(/\r/g, '\\r');
 }
 
+export { activeRuntimes };
 export default router;

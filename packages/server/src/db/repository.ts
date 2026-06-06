@@ -235,6 +235,27 @@ export function transitionWorkflowStatus(
 }
 
 /**
+ * Convert all workflow runs stuck in `running` status to `interrupted`.
+ * This handles the case where the server crashed or was restarted while
+ * workflows were actively running — they cannot resume, so they are marked
+ * as interrupted.
+ *
+ * @returns The number of workflow runs that were updated.
+ */
+export function markOrphanRunsAsInterrupted(): number {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = withRetry(() =>
+    db
+      .prepare(
+        "UPDATE workflow_runs SET status = 'interrupted', updated_at = ? WHERE status = 'running'",
+      )
+      .run(now),
+  );
+  return result.changes;
+}
+
+/**
  * Update a workflow run's mutable fields.
  * Uses a whitelist approach — only known fields can be updated.
  * For runtimeConfig: serializes to JSON; if null/undefined, stores NULL.

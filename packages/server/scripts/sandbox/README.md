@@ -44,7 +44,7 @@ signed.
 |---|---|
 | `New-SandboxProfile.ps1` | Allocate a profile, store metadata, optionally apply strict-mode DACL. |
 | `Start-SandboxedProcess.ps1` | Launch an executable under an existing profile's restricted token + job. |
-| `Remove-SandboxProfile.ps1` | Tear down a profile, restore original DACL, optionally kill live processes. |
+| `Remove-SandboxProfile.ps1` | Tear down a profile, restore original DACL (strict mode only, no-op in light mode), optionally kill live processes. |
 | `Get-SandboxProfiles.ps1` | List profiles and show which have running processes. |
 
 Profile metadata is persisted to:
@@ -270,9 +270,9 @@ script itself accepts Windows-style paths.
 - The profile store is JSON in the user's `%LOCALAPPDATA%`. It is
   readable only by the user. Do not share `sandbox-profiles.json`
   between users.
-- DACL backups contain the original SDDL of the workspace. They are
-  world-readable only if the parent directory is. Default Windows
-  permissions apply; no hardening is performed.
+- DACL backups (strict mode only) contain the original SDDL of the
+  workspace. They are world-readable only if the parent directory is.
+  Default Windows permissions apply; no hardening is performed.
 - The script's `Start-SandboxedProcess.ps1` rejects `bInheritHandles=true`
   in `STARTUPINFO`, so the child cannot access unrelated host handles.
   This is asserted in the code (the C# binding takes a `bool` for

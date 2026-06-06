@@ -209,9 +209,17 @@ describe('StreamManager', () => {
       const completed = createWorkflowCompletedEvent(WF);
       expect(completed.type).toBe('workflow_completed');
 
-      const failed = createWorkflowFailedEvent(WF, 'err');
+      const failed = createWorkflowFailedEvent(WF, {
+        phases: [],
+        agentResults: [],
+        error: 'err',
+      });
       expect(failed.type).toBe('workflow_failed');
-      expect(failed.data).toEqual({ error: 'err' });
+      expect(failed.data).toEqual({
+        phases: [],
+        agentResults: [],
+        error: 'err',
+      });
 
       const stopped = createWorkflowStoppedEvent(WF);
       expect(stopped.type).toBe('workflow_stopped');

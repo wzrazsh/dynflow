@@ -7,24 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-06
+
 ### Added
-- **Runtime configuration system** — per-workflow runner / LLM provider / model selection
-- `GET /api/system/info` endpoint returning available runners, providers, models, and defaults
-- `RuntimeConfigSchema` (zod) and `runtime_config_json` column on `workflow_runs` (migration v6)
-- Resolution order: **run override → definition default → env var** (3-tier priority)
-- `runtimeConfig` accepted on `POST /api/workflows`, `POST /:id/start`, `POST /:id/resume`
-- Five agent runners: `cua` (default), `cua-pi`, `pi-cua-native`, `pi-direct`, `docker` (legacy)
-- Three LLM providers: `opencode` (default), `openai`, `anthropic`
-- Web components: `RuntimeConfigForm` (reusable), `StartRunDialog` (start modal with pre-populated defaults), `RuntimeConfigChips` (read-only display)
-- `RuntimeConfigForm` integrated into `CreateWorkflowForm` and `WorkflowDetail`
-- `PROVIDER_MODELS` hardcoded suggestions in `packages/shared/src/system.ts`
-- API-level integration tests: `runtime-config.integration.test.ts`, `multi-agent-flow.test.ts`
+- Anthropic provider support via provider-aware API key resolver
+- Startup recovery: orphan `running` workflows converted to `interrupted`
+- `HOST` and `DYNFLOW_CORS_ORIGINS` environment variables
+- `workflow_failed` SSE event with preserved phase/agent results
+
+### Changed
+- **BREAKING**: `openaiApiKey` renamed to `apiKey` across all runners
+- Server defaults to binding on `127.0.0.1` (was all interfaces)
+- CORS defaults to local Vite addresses only
+- Workflows with phase errors now correctly marked as `failed` (was `completed`)
 
 ### Fixed
-- All four Pi-based runners (`CuaAgentRunner`, `CuaPiRunner`, `PiCuaNativeRunner`, `PiDirectRunner`) now respect `config.model` and `config.llmProvider`
-- `CuaAgentRunner` passes `--model` and `--provider` flags to `docker exec pi`
-- Sentinel bug where `'gpt-4o'` was hardcoded in `CuaPiRunner` and `PiDirectRunner` — now uses `config.llmProvider`
-- `PiCuaNativeRunner.resolveModel` checks `config.model` before falling back to default
+- Atomic state transitions prevent duplicate workflow starts
+- Runtime lifecycle cleanup ensures `activeRuntimes` is always cleared
+- Windows light mode documentation accurately reflects no filesystem isolation
+- Docker is correctly documented as optional
+
+### Removed
+- `test:coverage` script (coverage tooling not yet configured)
 
 ## [0.2.0] - 2026-05-31
 

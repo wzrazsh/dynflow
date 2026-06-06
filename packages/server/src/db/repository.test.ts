@@ -956,3 +956,50 @@ describe('transitionWorkflowStatus', () => {
     expect(updated.status).toBe('running');
   });
 });
+
+describe('markOrphanRunsAsInterrupted', () => {
+  it('converts orphan running workflows to interrupted', () => {
+    const db = getDb();
+    const def = JSON.stringify({ name: 'test', phases: [] });
+    const now = new Date().toISOString();
+
+    // Insert two running workflows and one completed workflow
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('orphan-1', 'Orphan 1', 'running', def, now, now);
+
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('orphan-2', 'Orphan 2', 'running', def, now, now);
+
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('completed-1', 'Completed', 'completed', def, now, now);
+
+    const count = repo.markOrphanRunsAsInterrupted();
+
+    expect(count).toBe(2);
+
+    const orphan1 = repo.getWorkflowRun('orphan-1')!;
+    expect(orphan1.status).toBe('interrupted');
+
+    const orphan2 = repo.getWorkflowRun('orphan-2')!;
+    expect(orphan2.status).toBe('interrupted');
+
+    // Non-running workflows must be left untouched
+    const completed = repo.getWorkflowRun('completed-1')!;
+    expect(completed.status).toBe('completed');
+  });
+
+  it('returns 0 when no orphan running workflows exist', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    repo.createWorkflowRun(def, 'Pending Run');
+
+    const count = repo.markOrphanRunsAsInterrupted();
+
+    expect(count).toBe(0);
+  });
+});

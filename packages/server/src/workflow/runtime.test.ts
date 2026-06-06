@@ -252,7 +252,7 @@ describe('WorkflowRuntime', () => {
       expect(completedEvents).toHaveLength(0);
     });
 
-    it('4 — agent failure → phase completed_with_errors, workflow continues', async () => {
+    it('4 — agent failure → phase completed_with_errors, workflow failed', async () => {
       const run = repo.createWorkflowRun(onePhaseDefinition(), 'Test');
       const runner = new MockAgentRunner();
 
@@ -268,7 +268,7 @@ describe('WorkflowRuntime', () => {
       await runtime.execute(run.id, 'test-api-key');
 
       const saved = repo.getWorkflowRun(run.id)!;
-      expect(saved.status).toBe('completed');
+      expect(saved.status).toBe('failed');
 
       // Phase should be completed_with_errors
       expect(saved.phases[0].status).toBe('completed_with_errors');
@@ -445,6 +445,55 @@ describe('WorkflowRuntime', () => {
       expect(agent.output).toBeDefined();
       expect(agent.output!.length).toBeLessThanOrEqual(100_000 + '...[truncated]'.length);
       expect(agent.output).toMatch(/\.\.\.\[truncated\]$/);
+    });
+
+    it('11 — multi-phase pipeline: one phase fails → workflow marked failed', async () => {
+      const def: WorkflowDefinition = {
+        name: 'multi-phase-failure',
+        phases: [
+          {
+            name: 'phase-1',
+            agents: [{ name: 'failing-agent', prompt: 'Will fail' }],
+          },
+          {
+            name: 'phase-2',
+            agents: [{ name: 'succeeding-agent', prompt: 'Will succeed' }],
+          },
+        ],
+      };
+      const run = repo.createWorkflowRun(def, 'MultiPhaseFailure');
+      const runner = new MockAgentRunner();
+
+      // Phase 1 agent fails
+      const phase1Agent = run.phases[0].agents[0];
+      runner.setResult(phase1Agent.id, {
+        success: false,
+        error: 'Phase 1 error',
+      });
+
+      const stream = new MockStreamManager();
+      const runtime = new WorkflowRuntime(runner, stream);
+      await runtime.execute(run.id, 'test-api-key');
+
+      const saved = repo.getWorkflowRun(run.id)!;
+
+      // Workflow marked failed (not completed) because a phase had errors
+      expect(saved.status).toBe('failed');
+
+      // Phase 1: completed_with_errors
+      expect(saved.phases[0].status).toBe('completed_with_errors');
+      expect(saved.phases[0].agents[0].status).toBe('failed');
+      expect(saved.phases[0].agents[0].error).toBe('Phase 1 error');
+
+      // Phase 2: still executed (runtime does not skip subsequent phases)
+      expect(saved.phases[1].status).toBe('completed');
+      expect(saved.phases[1].agents[0].status).toBe('completed');
+
+      // Should NOT have a workflow_completed event
+      const completedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_completed',
+      );
+      expect(completedEvents).toHaveLength(0);
     });
   });
 

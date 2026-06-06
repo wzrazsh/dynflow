@@ -323,8 +323,47 @@ export class WorkflowRuntime {
       return;
     }
 
-    // 4a. Mark workflow completed (the workflow itself completed execution even
-    //     if individual agents/phases had errors — this is the original behaviour).
+    // 4a. If any phase ended with errors, mark the workflow as failed so
+    //     consumers (UI, SSE, etc.) can distinguish a clean completion from
+    //     one with agent failures. The phases array is reloaded from the DB
+    //     because in-memory phase objects still hold their original statuses.
+    const finalRun = repo.getWorkflowRun(workflowRunId);
+    if (finalRun) {
+      const hasPhaseErrors = finalRun.phases.some(
+        (p) => p.status === 'completed_with_errors' || p.status === 'failed',
+      );
+      if (hasPhaseErrors) {
+        repo.updateWorkflowStatus(workflowRunId, 'failed');
+        await this.updateVersionMetaOnTerminal(
+          projectName,
+          version,
+          'Workflow failed due to phase errors',
+        );
+        this.streamManager.emit(
+          workflowRunId,
+          sseFactory.createWorkflowFailedEvent(workflowRunId, {
+            phases: finalRun.phases.map((p) => ({
+              name: p.name,
+              status: p.status,
+            })),
+            agentResults: finalRun.phases.flatMap((p) =>
+              p.agents.map((a) => ({
+                agentId: a.id,
+                agentName: a.name,
+                phaseName: p.name,
+                status: a.status,
+                output: a.output,
+                error: a.error,
+              })),
+            ),
+            error: 'One or more phases completed with errors',
+          }),
+        );
+        return;
+      }
+    }
+
+    // 4b. All phases completed cleanly — mark as completed.
     repo.updateWorkflowStatus(workflowRunId, 'completed');
     this.streamManager.emit(
       workflowRunId,

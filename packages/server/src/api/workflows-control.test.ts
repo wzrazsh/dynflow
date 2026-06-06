@@ -529,9 +529,10 @@ describe('activeRuntimes cleanup', () => {
 
     // PhaseExecutor catches agent errors internally via Promise.allSettled,
     // so runtime.execute() completes rather than rejects. The workflow will
-    // be marked 'completed' (not 'failed') — that's the existing behaviour.
+    // be marked 'failed' because phases with errors aggregate into a terminal
+    // failed status.
     const saved = repo.getWorkflowRun(run.id)!;
-    expect(['completed', 'completed_with_errors']).toContain(saved.status);
+    expect(saved.status).toBe('failed');
   });
 
   it('28 — cleaned up after stop', async () => {

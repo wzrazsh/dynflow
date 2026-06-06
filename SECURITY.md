@@ -37,6 +37,13 @@ sandbox uses the same Restricted Token + Job Object model that Chromium
 and Edge use for renderer isolation. It is the recommended fallback when
 Docker Desktop is unavailable on Windows.
 
+### Windows Native Runner Sandbox Modes
+
+- **Light mode (default, non-elevated)**: Parent user permissions, Job
+  Object memory limits, process tree cleanup. NO filesystem isolation.
+- **Strict mode (requires Administrator)**: Restricted Token + workspace
+  DACL. Provides filesystem sandboxing.
+
 ### Security model
 
 The Windows Native runner provides:
@@ -46,10 +53,11 @@ The Windows Native runner provides:
   `DISABLE_MAX_PRIVILEGE` + `SANDBOX_INERT` (strict mode). The
   sandboxed process cannot escalate privileges, impersonate the user,
   or use `SeDebugPrivilege`.
-- **Filesystem isolation** via the `WRITE_RESTRICTED` token flag in
-  light mode, and a custom DACL granting a per-workspace synthetic
-  SID in strict mode. The original DACL is backed up so it can be
-  restored on cleanup.
+- **Filesystem isolation** only in strict mode, via a custom DACL
+  granting a per-workspace synthetic SID. The original DACL is backed
+  up so it can be restored on cleanup. Light mode provides no
+  filesystem isolation; the agent runs under the parent user's
+  permissions.
 - **Process-tree termination** via `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
   If the DynFlow server process dies, the kernel terminates the agent
   process and all of its children.
@@ -80,7 +88,7 @@ The Windows Native runner provides:
 
 | Threat | Mitigated? |
 |---|---|
-| Agent reads/modifies files outside the workspace | Yes in strict mode; partially in light mode (system paths are blocked, but `%TEMP%` and similar are accessible). |
+| Agent reads/modifies files outside the workspace | Yes in strict mode, via workspace DACL. Light mode provides no filesystem isolation; the agent runs under the parent user's permissions. |
 | Agent spawns long-running processes that outlive the run | Yes, via `KILL_ON_JOB_CLOSE`. |
 | Agent exhausts host memory | Yes, via the per-process memory cap. |
 | Agent exfiltrates data over the network | No. Use a network policy. |

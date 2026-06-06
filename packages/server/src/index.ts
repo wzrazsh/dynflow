@@ -11,6 +11,7 @@ import { createApp, errorHandler } from './app.js'
 import { isDockerAvailable, cleanupContainers } from './runner/index.js';
 import { initSchema } from './db/schema.js';
 import { runMigrations, getMigrationStatus } from './db/migrations.js';
+import { markOrphanRunsAsInterrupted } from './db/repository.js';
 import { logger } from './logger.js';
 
 const port = process.env.PORT || 3001
@@ -29,6 +30,12 @@ const statuses = getMigrationStatus();
 const applied = statuses.filter((s) => s.applied).length;
 const pending = statuses.filter((s) => !s.applied).length;
 logger.info(`Migrations: ${applied} applied, ${pending} pending`);
+
+// Convert orphan running workflows to interrupted (server crash/restart)
+const orphanCount = markOrphanRunsAsInterrupted();
+if (orphanCount > 0) {
+  logger.info({ count: orphanCount }, 'Converted orphan running workflows to interrupted');
+}
 
 // ---------------------------------------------------------------------------
 // Startup checks & cleanup

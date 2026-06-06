@@ -19,7 +19,7 @@ import { createApp } from '../app.js';
 import { closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import * as registry from '../agent/registry.js';
-import { orchestrate, OrchestratorValidationError } from '../orchestrator/index.js';
+import { orchestrate } from '../orchestrator/index.js';
 import { generateWorkflow } from '../workflow/generator.js';
 import { validateWorkflowDefinition } from '@dynflow/shared';
 import { executeScript } from '../sandbox/isolated-runtime.js';
@@ -28,10 +28,6 @@ import type {
   AgentSource,
   AgentRole,
   PredefinedAgent,
-  Skill,
-  SkillCategory,
-  WorkflowDefinition,
-  AgentDefinition,
 } from '@dynflow/shared';
 
 // =========================================================================

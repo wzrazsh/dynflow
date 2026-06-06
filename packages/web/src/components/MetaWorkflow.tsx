@@ -4,9 +4,6 @@ import type {
   ScanResult,
   ExtractionResult,
   RegistrationResult,
-  ScannedFile,
-  ExtractedAgent,
-  ExtractedSkill,
 } from '../api/meta';
 
 // ---------------------------------------------------------------------------

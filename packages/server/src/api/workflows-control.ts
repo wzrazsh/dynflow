@@ -7,7 +7,6 @@ import type { WorkflowExecuteOptions } from '../workflow/runtime.js';
 import { ProjectService } from '../project/project-service.js';
 import { createAgentRunner } from '../runner/index.js';
 import { StreamManager } from '../sse/stream-manager.js';
-import type { WorkflowStatus } from '@dynflow/shared';
 import type { RuntimeConfig } from '@dynflow/shared';
 import { RuntimeConfigSchema } from '@dynflow/shared';
 import { CuaAgentRunner } from '../runner/cua-runner.js';

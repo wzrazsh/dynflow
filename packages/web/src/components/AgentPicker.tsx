@@ -505,7 +505,7 @@ export default function AgentPicker({
         </div>
       );
     }
-    return items.map((item: any) => (
+    return items.map((item: T) => (
       <LevelItem
         key={item.id}
         item={item}

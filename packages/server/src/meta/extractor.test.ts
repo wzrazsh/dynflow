@@ -3,9 +3,6 @@ import {
   extractAgents,
   extractSkills,
   extractAll,
-  type ExtractedAgent,
-  type ExtractedSkill,
-  type ExtractionResult,
   type ScannedFile,
 } from './extractor.js';
 
@@ -142,20 +139,6 @@ inputSchema:
       type: string
 `;
 
-const yamlArrayMixed = `
-- name: tester
-  description: Tests code
-  systemPrompt: You are a tester.
-- name: test-automation
-  description: Automates test execution
-  category: automation
-  parameters:
-    - name: command
-      type: string
-      description: Test command
-      required: true
-`;
-
 const yamlArrayMultipleSkills = `
 - name: skill-alpha
   description: Alpha skill
@@ -171,14 +154,6 @@ const yamlInvalid = [
   'name: unclosed',
   'description: broken value without proper ending',
 ].join('\n');
-
-const yamlNonDef = [
-  'config:',
-  '  key: value',
-  '  version: 1.0',
-].join('\n');
-
-const yamlEmpty = '';
 
 // ---------------------------------------------------------------------------
 // Markdown fixture content
@@ -212,20 +187,6 @@ parameters:
 # Research Skill
 
 Body content here.
-`;
-
-const mdFrontmatterBoth = `---
-name: hybrid-agent
-description: Agent from markdown
-systemPrompt: I am hybrid.
----
-
----
-name: hybrid-skill
-description: Skill from markdown
-category: communication
-parameters: []
----
 `;
 
 const mdNoFrontmatter = `# Just a document

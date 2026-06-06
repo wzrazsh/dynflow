@@ -145,10 +145,6 @@ export function createRestrictedToken(
   // 4 bytes of each array is the count (DWORD), then the elements.
   // Koffi sees this as a `void *` so we just need the byte layout to be
   // right; the OS only reads the elements it was promised.
-  const SIDS_TO_DISABLE = 'SIDS_TO_DISABLE';
-  const SIDS_TO_RESTRICT = 'SIDS_TO_RESTRICT';
-  const PRIVS_TO_DELETE = 'PRIVS_TO_DELETE';
-
   // We pack arrays into Buffers and pass pointers to them.
   // CreateRestrictedToken's "SidsToDisable" / "SidsToRestrict" arrays
   // are SID_AND_ATTRIBUTES structs: { PSID Sid; DWORD Attributes; } = 16 bytes on x64.

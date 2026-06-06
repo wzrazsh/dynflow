@@ -40,16 +40,20 @@ interface ParsedPhase {
 // Lazy isolated-vm loader
 // ---------------------------------------------------------------------------
 
-let ivmModule: any = undefined;
+interface IsolatedVmModule {
+  Isolate: new (...args: unknown[]) => unknown;
+}
+
+let ivmModule: IsolatedVmModule | null | undefined = undefined;
 let ivmLoadAttempted = false;
 
-async function getIsolatedVm(): Promise<any> {
+async function getIsolatedVm(): Promise<IsolatedVmModule | null> {
   if (!ivmLoadAttempted) {
     ivmLoadAttempted = true;
     try {
       const mod = await import('isolated-vm');
       // ESM wraps in default; handle both: mod.Isolate or mod.default.Isolate
-      let candidate: any = null;
+      let candidate: IsolatedVmModule | null = null;
       if (mod.Isolate) {
         candidate = mod;
       } else if (mod.default && mod.default.Isolate) {
@@ -99,7 +103,7 @@ export async function executeScript(
 async function executeWithIsolate(
   script: string,
   options: SandboxOptions,
-  ivm: any,
+  ivm: IsolatedVmModule,
 ): Promise<SandboxResult> {
   // Build the injected API that records phase/agent calls inside the isolate.
   // Uses globalThis so the array is accessible from the host after execution.
@@ -152,7 +156,7 @@ function agent(name, promptOrConfig) {
 
   const fullScript = `${injectCode}\n${script}`;
 
-  let isolate: any = undefined;
+  let isolate: { Isolate: new (...args: unknown[]) => unknown; dispose: () => void } | undefined = undefined;
 
   try {
     isolate = new ivm.Isolate({ memoryLimit: options.memoryLimitMb });
@@ -215,9 +219,9 @@ function agent(name, promptOrConfig) {
     }
 
     return { success: true, definition };
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
-    const stack = err?.stack ?? '';
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : '';
 
     if (
       msg.includes('Script execution timed out') ||
@@ -618,16 +622,12 @@ function extractPhases(code: string): ParsedPhase[] {
 // Agent extraction
 // ---------------------------------------------------------------------------
 
-function extractAgents(body: string, offset: number): ParsedAgent[] {
+function extractAgents(body: string, _offset: number): ParsedAgent[] {
   const agents: ParsedAgent[] = [];
   const agentRegex = /\bagent\s*\(/g;
   let m: RegExpExecArray | null;
 
   while ((m = agentRegex.exec(body)) !== null) {
-    const localLine = getLineNumber(body, m.index);
-    const globalLine = getLineNumber(body, m.index) > 0
-      ? getLineNumber(body, m.index)
-      : 1;
 
     let pos = m.index + m[0].length;
     pos = skipWhitespace(body, pos);

@@ -50,8 +50,7 @@ import {
   deleteDomain,
 } from '../db/repository.js';
 import type { ScanOptions } from './scanner.js';
-import type { ScannedFile } from './extractor.js';
-import type { SkillCategory, SkillParameter } from '@dynflow/shared';
+
 
 // ---------------------------------------------------------------------------
 // Helpers

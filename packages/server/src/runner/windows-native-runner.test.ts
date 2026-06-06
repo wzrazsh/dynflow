@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentResult } from './types.js';
+
 
 // ---------------------------------------------------------------------------
 // vi.mock() factories are hoisted to the top of the file, so the mock
@@ -146,9 +146,7 @@ function makeMockContext(opts: {
   mocks.terminateProcess.mockReturnValue(undefined);
 
   // Default: process exits cleanly after the first wait call.
-  let waitCount = 0;
   mocks.waitForSingleObject.mockImplementation(() => {
-    waitCount++;
     if (opts.waitResult !== undefined) return opts.waitResult;
     return 0;
   });
@@ -164,13 +162,11 @@ function makeMockContext(opts: {
 
 describe('WindowsNativeRunner', () => {
   let workDir: string;
-  let originalPlatform: NodeJS.Platform;
   let originalStrictEnv: string | undefined;
   let originalDynflowRunner: string | undefined;
 
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), 'wnr-test-'));
-    originalPlatform = process.platform;
     originalStrictEnv = process.env.DYNFLOW_WIN_SANDBOX_STRICT;
     originalDynflowRunner = process.env.DYNFLOW_RUNNER;
     delete process.env.DYNFLOW_WIN_SANDBOX_STRICT;

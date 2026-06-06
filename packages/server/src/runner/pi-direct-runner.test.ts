@@ -102,7 +102,7 @@ describe('PiDirectRunner', () => {
     });
 
     it('honors a custom binary argument', () => {
-      const runner = new PiDirectRunner({ binary: 'node' });
+      new PiDirectRunner({ binary: 'node' });
       expect(PiDirectRunner.isAvailable('node')).toBe(true);
       expect(PiDirectRunner.isAvailable('definitely-not-real-abc')).toBe(false);
     });

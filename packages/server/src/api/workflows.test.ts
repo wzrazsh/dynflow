@@ -4,7 +4,7 @@ import { createApp } from '../app.js';
 import { getDb, closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
-import type { WorkflowDefinition, RuntimeConfig } from '@dynflow/shared';
+import type { WorkflowDefinition } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers

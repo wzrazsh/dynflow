@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { WorkspaceConfig, WorkflowDefinition } from './types.js';
+import type { WorkflowDefinition } from './types.js';
 
 describe('WorkspaceConfig', () => {
   it('can be attached to WorkflowDefinition', () => {

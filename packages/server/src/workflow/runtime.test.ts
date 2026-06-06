@@ -180,11 +180,10 @@ describe('WorkflowRuntime', () => {
       const runner = new MockAgentRunner();
       const stream = new MockStreamManager();
 
-      // Track phase start order
-      const phaseStartOrder: string[] = [];
-      const originalGetRun = repo.getWorkflowRun.bind(repo);
-      // Spy on phase_status updates to record order
-      const originalUpdatePhase = repo.updatePhaseStatus.bind(repo);
+      // Track phase start order — was used historically; kept for reference
+      // const phaseStartOrder: string[] = [];
+      // const originalGetRun = repo.getWorkflowRun.bind(repo);
+      // const originalUpdatePhase = repo.updatePhaseStatus.bind(repo);
 
       // We'll intercept after the fact — just verify events
       const runtime = new WorkflowRuntime(runner, stream);
@@ -329,7 +328,6 @@ describe('WorkflowRuntime', () => {
       const runner = new MockAgentRunner();
 
       // Phase 1: agent-1 succeeds, agent-2 fails
-      const phase1Agent1 = run.phases[0].agents[0];
       const phase1Agent2 = run.phases[0].agents[1];
       runner.setResult(phase1Agent2.id, {
         success: false,

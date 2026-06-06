@@ -50,11 +50,11 @@ export interface OrchestrateResponse {
 export function orchestrateWorkflow(
   userRequest: string,
   options?: {
-    domains?: any[];
-    sources?: any[];
-    roles?: any[];
-    agents?: any[];
-    skills?: any[];
+    domains?: unknown[];
+    sources?: unknown[];
+    roles?: unknown[];
+    agents?: unknown[];
+    skills?: unknown[];
     apiKey?: string;
     baseUrl?: string;
     model?: string;

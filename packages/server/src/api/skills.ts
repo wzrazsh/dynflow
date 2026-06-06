@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
     const sourceId = req.query.sourceId as string | undefined;
     const category = req.query.category as string | undefined;
     const { skills, total } = repo.getSkillsPaginated(page, pageSize, sourceId, category);
-    res.json({ success: true, data: skills, page, pageSize, total } as any);
+    res.json({ success: true, data: skills, page, pageSize, total } as ApiResponse<Skill[]> & { page: number; pageSize: number; total: number });
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }

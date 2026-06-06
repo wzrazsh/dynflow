@@ -1,7 +1,6 @@
-import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
-import { statSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentRunConfig, AgentResult, AgentRunner } from './types.js';
 import { parsePiJsonLines } from './pi-output-parser.js';
@@ -9,8 +8,6 @@ import { scanWorkspaceChanges } from './workspace-scanner.js';
 import { buildPiPrompt } from './prompt-builder.js';
 import { killProcessTree } from './pi-direct-runner.js';
 import { resolvePiBinary } from './pi-binary.js';
-
-const execFileAsync = promisify(execFile);
 
 /** Cap buffered stdout/stderr per stream to avoid unbounded memory growth.
  *  Pi in --mode json emits a JSONL event per line and a typical

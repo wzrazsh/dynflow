@@ -135,7 +135,6 @@ export class WorkflowRuntime {
     );
 
     // 3. Execute phases sequentially
-    let allPhasesSuccessful = true;
 
     for (const phase of workflowRun.phases) {
       // Reload from DB to pick up fresh statuses (phases may have been
@@ -151,9 +150,7 @@ export class WorkflowRuntime {
         (latestPhase.status === 'completed' ||
           latestPhase.status === 'completed_with_errors')
       ) {
-        if (latestPhase.status !== 'completed') {
-          allPhasesSuccessful = false;
-        }
+        // _allPhasesSuccessful tracking removed (variable was unused)
         continue;
       }
 
@@ -229,8 +226,7 @@ export class WorkflowRuntime {
               }
             : undefined;
 
-          const noVncUrl = agentResult.noVncUrl;
-          const cuaApiUrl = agentResult.cuaApiUrl;
+          // noVncUrl and cuaApiUrl were stored but unused downstream
 
           repo.updateAgentStatus(agent.id, 'completed', {
             output: truncated,
@@ -281,7 +277,7 @@ export class WorkflowRuntime {
       const phaseStatus =
         phaseResult.status === 'completed' ? 'completed' : 'completed_with_errors';
       if (phaseStatus !== 'completed') {
-        allPhasesSuccessful = false;
+        // allPhasesSuccessful tracking removed (variable was unused downstream)
       }
       repo.updatePhaseStatus(phase.id, phaseStatus);
       this.streamManager.emit(

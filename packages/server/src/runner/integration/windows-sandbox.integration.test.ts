@@ -21,9 +21,9 @@
  * only depend on Node.js + the Win32 kernel.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { WindowsNativeRunner } from '../windows-native-runner.js';
 import * as sandbox from '../sandbox/index.js';

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   PhaseExecutor,
   ConcurrencyLimiter,
-  type AgentResult,
 } from './phase-executor.js';
 import type { AgentRun, RuntimeConfig } from '@dynflow/shared';
 import type { AgentRunner, AgentRunConfig } from '../runner/types.js';

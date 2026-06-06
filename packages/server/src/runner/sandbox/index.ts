@@ -30,7 +30,6 @@ import {
   setJobObjectLimits,
   setJobObjectBasicUiRestrictions,
   assignProcessToJobObject,
-  closeJobObject,
   JobObject,
   DEFAULT_JOB_LIMITS,
   type JobLimits,

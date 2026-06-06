@@ -558,13 +558,11 @@ export default function WorkflowDetail({
 // Small helper component for control buttons
 function ControlButton({
   label,
-  action,
   onClick,
   loading,
   color,
 }: {
   label: string;
-  action: string;
   onClick: () => void;
   loading: boolean;
   color: string;

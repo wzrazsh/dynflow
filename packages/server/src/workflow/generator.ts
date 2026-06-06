@@ -99,7 +99,7 @@ export function generateWorkflow(
       // -------------------------------------------------------------------
       // Resolve agentId (if present)
       // -------------------------------------------------------------------
-      let effectivePrompt = agentInput.prompt;
+      const effectivePrompt = agentInput.prompt;
       let useAgentId = !!agentInput.agentId;
 
       if (agentInput.agentId) {

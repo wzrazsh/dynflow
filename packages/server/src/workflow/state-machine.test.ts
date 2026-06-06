@@ -31,7 +31,7 @@ describe('WorkflowFSM', () => {
       });
     });
 
-    validCases.forEach(({ from, action, to, label }) => {
+    validCases.forEach(({ from, action, label }) => {
       it(`canTransition: ${label}`, () => {
         expect(WorkflowFSM.canTransition(from, action)).toBe(true);
       });

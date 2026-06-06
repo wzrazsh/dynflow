@@ -10,7 +10,7 @@ router.get('/', (req, res) => {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
     const { domains, total } = repo.getDomainsPaginated(page, pageSize);
-    res.json({ success: true, data: domains, page, pageSize, total } as any);
+    res.json({ success: true, data: domains, page, pageSize, total } as ApiResponse<Domain[]> & { page: number; pageSize: number; total: number });
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }

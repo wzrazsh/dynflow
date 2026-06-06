@@ -184,11 +184,6 @@ function tempDir(): string {
   return join(tmpdir(), 'dynflow-test-' + randomUUID());
 }
 
-function ensureCleanDir(dir: string): void {
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-}
-
 function removeDir(dir: string): void {
   rmSync(dir, { recursive: true, force: true });
 }

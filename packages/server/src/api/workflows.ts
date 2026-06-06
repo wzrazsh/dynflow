@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import type { WorkflowRun, ApiResponse, WorkflowListResponse, WorkflowListFilters, WorkflowStatus } from '@dynflow/shared';
 import { RuntimeConfigSchema } from '@dynflow/shared';
-import type { RuntimeConfig } from '@dynflow/shared';
 import { executeScript } from '../sandbox/isolated-runtime.js';
 import * as repo from '../db/repository.js';
 

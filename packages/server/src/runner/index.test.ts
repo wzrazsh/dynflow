@@ -140,7 +140,7 @@ vi.mock('./wsl-docker-runner.js', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-import { createAgentRunner, RunnerType } from './index.js';
+import { createAgentRunner } from './index.js';
 import { WindowsNativeRunner } from './windows-native-runner.js';
 
 describe('createAgentRunner selection chain', () => {

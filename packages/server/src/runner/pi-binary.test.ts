@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
@@ -111,7 +111,7 @@ describe('resolvePiBinary()', () => {
       const binDir = join(tmp, '.bin');
       mkdirSync(binDir, { recursive: true });
       writeFileSync(join(binDir, 'pi.cmd'), '@echo off\r\n');
-      const pkgRoot = join(tmp, '..', '..', 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist');
+      join(tmp, '..', '..', 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist');
       // Note: this case uses the shimDir.replace trick. We need the cli.js
       // to be reachable from the shim dir, so we create it under tmp's
       // parent traversal chain. For simplicity, just place it in tmp.

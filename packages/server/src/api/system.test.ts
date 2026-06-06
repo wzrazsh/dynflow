@@ -53,7 +53,7 @@ describe('GET /api/system', () => {
     delete process.env.ANTHROPIC_API_KEY;
 
     const res = await request(app).get('/api/system');
-    const opencodeProvider = res.body.data.providers.find((p: any) => p.id === 'opencode');
+    const opencodeProvider = res.body.data.providers.find((p: { id: string }) => p.id === 'opencode');
     expect(opencodeProvider.available).toBe(false);
   });
 
@@ -61,8 +61,8 @@ describe('GET /api/system', () => {
     process.env.OPENCODE_API_KEY = 'test-key';
 
     const res = await request(app).get('/api/system');
-    const cua = res.body.data.runners.find((r: any) => r.id === 'cua');
-    const docker = res.body.data.runners.find((r: any) => r.id === 'docker');
+    const cua = res.body.data.runners.find((r: { id: string }) => r.id === 'cua');
+    const docker = res.body.data.runners.find((r: { id: string }) => r.id === 'docker');
     expect(cua.available).toBe(true);
     expect(docker.available).toBe(false);
   });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import type { WorkflowRun, SystemInfo, RuntimeConfig } from '@dynflow/shared';
 import { fetchWorkflow, controlWorkflow } from '../api/workflows';
 import { fetchSystemInfo } from '../api/system';
@@ -51,7 +51,7 @@ export default function WorkflowDetail({
     }
   }, [workflowId]);
 
-  // SSE live updates — only subscribe when the workflow is active
+  // SSE live updates 鈥?only subscribe when the workflow is active
   const workflowForSSE = workflow && (workflow.status === 'running' || workflow.status === 'paused') ? workflowId : null;
   const { events, status: sseStatus } = useSSE(workflowForSSE);
   const prevEventCountRef = useRef(0);
@@ -251,7 +251,7 @@ export default function WorkflowDetail({
               marginLeft: 4,
             }}
           >
-            {sseStatus.connected ? '● Live' : sseStatus.reconnecting ? '⟳ Reconnecting...' : ''}
+            {sseStatus.connected ? '鈼?Live' : sseStatus.reconnecting ? '鉄?Reconnecting...' : ''}
           </span>
         )}
       </div>
@@ -278,7 +278,7 @@ export default function WorkflowDetail({
           {isPending && (
             <ControlButton
               label="Start"
-              action="start"
+
               onClick={() => handleControl('start')}
               loading={actionLoading === 'start'}
               color="#059669"
@@ -288,14 +288,14 @@ export default function WorkflowDetail({
             <>
               <ControlButton
                 label="Pause"
-                action="pause"
+
                 onClick={() => handleControl('pause')}
                 loading={actionLoading === 'pause'}
                 color="#d97706"
               />
               <ControlButton
                 label="Stop"
-                action="stop"
+
                 onClick={() => handleControl('stop')}
                 loading={actionLoading === 'stop'}
                 color="#dc2626"
@@ -306,14 +306,14 @@ export default function WorkflowDetail({
             <>
               <ControlButton
                 label="Resume"
-                action="resume"
+
                 onClick={() => handleControl('resume')}
                 loading={actionLoading === 'resume'}
                 color="#059669"
               />
               <ControlButton
                 label="Stop"
-                action="stop"
+
                 onClick={() => handleControl('stop')}
                 loading={actionLoading === 'stop'}
                 color="#dc2626"
@@ -445,7 +445,7 @@ export default function WorkflowDetail({
                                 }}
                                 title={`Open Cua desktop: ${agent.noVncUrl}`}
                               >
-                                🖥️ Cua Desktop
+                                馃枼锔?Cua Desktop
                               </a>
                             )}
                             {agent.cuaApiUrl && (

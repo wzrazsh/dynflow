@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchDomains, fetchAgentSources, fetchRoles, fetchAgentsByRole } from '../api/registry';
 import type { Domain, AgentSource, AgentRole, PredefinedAgent } from '@dynflow/shared';
 
@@ -8,7 +8,7 @@ export interface AgentPickerProps {
   maxSelections?: number;
 }
 
-// ─── Level section header ────────────────────────────────────
+// 鈹€鈹€鈹€ Level section header 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function LevelHeader({
   level,
   title,
@@ -67,7 +67,7 @@ function LevelHeader({
   );
 }
 
-// ─── Level list item ─────────────────────────────────────────
+// 鈹€鈹€鈹€ Level list item 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function LevelItem<T extends { id: string; name: string; description?: string }>({
   item,
   isSelected,
@@ -150,7 +150,7 @@ function LevelItem<T extends { id: string; name: string; description?: string }>
   );
 }
 
-// ─── Agent checkbox item ─────────────────────────────────────
+// 鈹€鈹€鈹€ Agent checkbox item 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function AgentItem({
   agent,
   isSelected,
@@ -227,7 +227,7 @@ function AgentItem({
   );
 }
 
-// ─── Chip ────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Chip 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
     <span
@@ -267,7 +267,7 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   );
 }
 
-// ─── Main component ──────────────────────────────────────────
+// 鈹€鈹€鈹€ Main component 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 export default function AgentPicker({
   selectedAgents,
   onSelectionChange,
@@ -302,7 +302,7 @@ export default function AgentPicker({
   const selectedSet = useRef(new Set(selectedAgents));
   selectedSet.current = new Set(selectedAgents);
 
-  // ── Load domains on mount ──────────────────────────────────
+  // 鈹€鈹€ Load domains on mount 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   useEffect(() => {
     let cancelled = false;
     setDomainsLoading(true);
@@ -330,7 +330,7 @@ export default function AgentPicker({
     };
   }, []);
 
-  // ── Load sources when domain changes ──────────────────────
+  // 鈹€鈹€ Load sources when domain changes 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   useEffect(() => {
     if (!selectedDomainId) return;
 
@@ -364,7 +364,7 @@ export default function AgentPicker({
     };
   }, [selectedDomainId]);
 
-  // ── Load roles when source changes ─────────────────────────
+  // 鈹€鈹€ Load roles when source changes 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   useEffect(() => {
     if (!selectedSourceId) return;
 
@@ -397,7 +397,7 @@ export default function AgentPicker({
     };
   }, [selectedSourceId]);
 
-  // ── Load agents when role changes ──────────────────────────
+  // 鈹€鈹€ Load agents when role changes 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   useEffect(() => {
     if (!selectedRoleId) return;
 
@@ -432,7 +432,7 @@ export default function AgentPicker({
     };
   }, [selectedRoleId]);
 
-  // ── Handlers ───────────────────────────────────────────────
+  // 鈹€鈹€ Handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   const handleSelectDomain = useCallback((id: string) => {
     setSelectedDomainId((prev) => (prev === id ? prev : id));
   }, []);
@@ -464,10 +464,10 @@ export default function AgentPicker({
     [selectedAgents, onSelectionChange],
   );
 
-  // ── Helpers ────────────────────────────────────────────────
+  // 鈹€鈹€ Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   const isAtMax = selectedAgents.length >= maxSelections;
 
-  function renderLevelContent<T>(
+  function renderLevelContent<T extends { id: string; name: string; description?: string }>(
     items: T[],
     loading: boolean,
     error: string | null,
@@ -528,7 +528,7 @@ export default function AgentPicker({
         backgroundColor: '#fff',
       }}
     >
-      {/* ── Title ────────────────────────────────────────────── */}
+      {/* 鈹€鈹€ Title 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
       <div
         style={{
           padding: '12px 14px',
@@ -542,7 +542,7 @@ export default function AgentPicker({
         Select Agents
       </div>
 
-      {/* ── Level 1: Domain ─────────────────────────────────── */}
+      {/* 鈹€鈹€ Level 1: Domain 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
       <div style={{ borderBottom: '1px solid #e5e7eb' }}>
         <LevelHeader level={1} title="Select Domain" count={domains.length} disabled={false} />
         {renderLevelContent(
@@ -555,7 +555,7 @@ export default function AgentPicker({
         )}
       </div>
 
-      {/* ── Level 2: Source ─────────────────────────────────── */}
+      {/* 鈹€鈹€ Level 2: Source 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
       {selectedDomainId && (
         <div style={{ borderBottom: '1px solid #e5e7eb' }}>
           <LevelHeader level={2} title="Select Source" count={sources.length} disabled={false} />
@@ -570,7 +570,7 @@ export default function AgentPicker({
         </div>
       )}
 
-      {/* ── Level 3: Role ───────────────────────────────────── */}
+      {/* 鈹€鈹€ Level 3: Role 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
       {selectedSourceId && (
         <div style={{ borderBottom: '1px solid #e5e7eb' }}>
           <LevelHeader level={3} title="Select Role" count={roles.length} disabled={false} />
@@ -585,7 +585,7 @@ export default function AgentPicker({
         </div>
       )}
 
-      {/* ── Level 4: Agent ──────────────────────────────────── */}
+      {/* 鈹€鈹€ Level 4: Agent 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
       {selectedRoleId && (
         <div>
           <LevelHeader
@@ -646,7 +646,7 @@ export default function AgentPicker({
         </div>
       )}
 
-      {/* ── Selected chips ──────────────────────────────────── */}
+      {/* 鈹€鈹€ Selected chips 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
       {selectedAgents.length > 0 && (
         <div
           style={{

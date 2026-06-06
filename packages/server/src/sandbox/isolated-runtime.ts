@@ -1,8 +1,8 @@
-/**
+﻿/**
  * Sandbox runtime for executing user workflow scripts.
  *
  * Implements a two-tier strategy:
- * 1. Try to use `isolated-vm` (V8 Isolate) — the preferred approach.
+ * 1. Try to use `isolated-vm` (V8 Isolate) 鈥?the preferred approach.
  * 2. Fall back to a pattern-based string parser when native compilation
  *    is unavailable (common on Windows without Build Tools).
  *
@@ -36,28 +36,35 @@ interface ParsedPhase {
   line: number;
 }
 
+type PhaseResult = { name: string; agents: Array<{ name: string; prompt?: string; agentId?: string }> };
 // ---------------------------------------------------------------------------
 // Lazy isolated-vm loader
 // ---------------------------------------------------------------------------
 
-interface IsolatedVmModule {
-  Isolate: new (...args: unknown[]) => unknown;
+interface IsolateInstance {
+  createContext: () => Promise<unknown>;
+  compileScript: (code: string, options?: unknown) => Promise<{ run: (ctx: unknown, opts?: unknown) => Promise<unknown> }>;
+  dispose: () => void;
 }
 
-let ivmModule: IsolatedVmModule | null | undefined = undefined;
+interface IsolatedVmModule {
+  Isolate: new (...args: unknown[]) => IsolateInstance;
+}
+
+let ivmModule: IsolatedVmModule | null = null;
 let ivmLoadAttempted = false;
 
 async function getIsolatedVm(): Promise<IsolatedVmModule | null> {
   if (!ivmLoadAttempted) {
     ivmLoadAttempted = true;
     try {
-      const mod = await import('isolated-vm');
+      const mod = (await import('isolated-vm')) as unknown as Record<string, unknown>;
       // ESM wraps in default; handle both: mod.Isolate or mod.default.Isolate
       let candidate: IsolatedVmModule | null = null;
-      if (mod.Isolate) {
-        candidate = mod;
-      } else if (mod.default && mod.default.Isolate) {
-        candidate = mod.default;
+      if (mod.Isolate && typeof mod.Isolate === 'function') {
+        candidate = mod as unknown as IsolatedVmModule;
+      } else if (mod.default && typeof (mod.default as Record<string, unknown>).Isolate === 'function') {
+        candidate = mod.default as unknown as IsolatedVmModule;
       }
       // Verify it actually works
       if (candidate && typeof candidate.Isolate === 'function') {
@@ -98,7 +105,7 @@ export async function executeScript(
 /**
  * Execute the user script inside a V8 Isolate via isolated-vm.
  * The injected API (phase/agent) is prepended as source code so it runs
- * entirely within the isolate — no cross-context Reference gymnastics.
+ * entirely within the isolate 鈥?no cross-context Reference gymnastics.
  */
 async function executeWithIsolate(
   script: string,
@@ -156,11 +163,11 @@ function agent(name, promptOrConfig) {
 
   const fullScript = `${injectCode}\n${script}`;
 
-  let isolate: { Isolate: new (...args: unknown[]) => unknown; dispose: () => void } | undefined = undefined;
+  let isolate: { createContext: () => Promise<unknown>; compileScript: (code: string, options?: unknown) => Promise<{ run: (ctx: unknown, opts?: unknown) => Promise<unknown> }>; dispose: () => void } | undefined = undefined;
 
   try {
     isolate = new ivm.Isolate({ memoryLimit: options.memoryLimitMb });
-    const context = await isolate.createContext();
+    const context = (await isolate.createContext()) as { global: { get: (name: string) => Promise<unknown> } };
 
     // Compile (async in v6) then run (also async in v6)
     const scriptInstance = await isolate.compileScript(fullScript);
@@ -168,8 +175,9 @@ function agent(name, promptOrConfig) {
 
     // Extract the recorded phases
     const phasesRef = await context.global.get('__phases__');
+    const phasesRefTyped = phasesRef as { copy: () => Promise<PhaseResult[]> };
     const raw: Array<{ name: string; agents: Array<{ name: string; prompt?: string; agentId?: string }> }> =
-      await phasesRef.copy();
+      await phasesRefTyped.copy();
 
     // Validate limits
     if (raw.length > 50) {
@@ -207,7 +215,7 @@ function agent(name, promptOrConfig) {
     // Note: `workspace` is supplied at the API request layer (validated by
     // WorkflowDefinitionSchema) and merged into the definition by the API
     // handler before persistence. The sandbox does not need to know about
-    // workspace — it only extracts phases/agents.
+    // workspace 鈥?it only extracts phases/agents.
 
     // Validate with shared schema
     const validation = validateWorkflowDefinition(definition);
@@ -221,7 +229,7 @@ function agent(name, promptOrConfig) {
     return { success: true, definition };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : '';
+    const stack = err instanceof Error ? (err.stack ?? '') : '';
 
     if (
       msg.includes('Script execution timed out') ||
@@ -293,7 +301,7 @@ async function executeWithParser(
 }
 
 async function parseScript(script: string): Promise<SandboxResult> {
-  // 1. Basic syntax check — balanced braces
+  // 1. Basic syntax check 鈥?balanced braces
   const braceCheck = checkBalancedBraces(script);
   if (braceCheck !== null) {
     return { success: false, error: 'Unmatched opening brace', line: braceCheck };
@@ -420,7 +428,7 @@ function checkBalancedBraces(code: string): number | null {
       stack.push({ char: '{', line });
     } else if (ch === '}') {
       if (stack.length === 0) {
-        // Closing brace without opening — syntax error we can still handle,
+        // Closing brace without opening 鈥?syntax error we can still handle,
         // but we report the position.
         return line;
       }
@@ -568,7 +576,7 @@ function extractPhases(code: string): ParsedPhase[] {
     pos = skipWhitespace(code, pos);
 
     const nameResult = parseStringLiteral(code, pos);
-    if (!nameResult) continue; // malformed — skip
+    if (!nameResult) continue; // malformed 鈥?skip
 
     const phaseName = nameResult.value;
     pos = nameResult.nextPos;

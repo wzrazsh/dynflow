@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -14,7 +14,7 @@ import { runMigrations, getMigrationStatus } from './db/migrations.js';
 import { markOrphanRunsAsInterrupted } from './db/repository.js';
 import { logger } from './logger.js';
 
-const port = process.env.PORT || 3001
+const port = Number(process.env.PORT) || 3001
 const host = process.env.HOST || '127.0.0.1'
 const app = createApp()
 
@@ -59,7 +59,7 @@ if (isDockerAvailable()) {
 // Start server
 // ---------------------------------------------------------------------------
 
-// Global error handler — must be registered AFTER all routes
+// Global error handler 鈥?must be registered AFTER all routes
 app.use(errorHandler);
 
 const server = app.listen(port, host, () => {

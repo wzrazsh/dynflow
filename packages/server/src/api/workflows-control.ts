@@ -42,6 +42,28 @@ function isRunnerAvailable(runnerId: string): boolean {
   }
 }
 
+/**
+ * Resolve the API key based on the requested LLM provider.
+ * When provider is specified, returns its key or null (fail fast, no silent fallback).
+ * When provider is undefined, falls back through OPENCODE -> OPENAI -> ANTHROPIC.
+ */
+function resolveApiKey(provider?: string): string | null {
+  const envMap: Record<string, string | undefined> = {
+    opencode: process.env.OPENCODE_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    anthropic: process.env.ANTHROPIC_API_KEY,
+  };
+
+  if (provider) {
+    const key = envMap[provider];
+    if (!key) return null; // Fail fast — don't fall back to a different provider
+    return key;
+  }
+
+  // No provider specified — fallback chain
+  return envMap.opencode || envMap.openai || envMap.anthropic || null;
+}
+
 // ---------------------------------------------------------------------------
 // GET /:id — Retrieve a workflow run
 // ---------------------------------------------------------------------------
@@ -71,12 +93,6 @@ router.post('/:id/start', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  // Resolve API key before any side effects
-  const apiKey = process.env.OPENCODE_API_KEY || process.env.OPENAI_API_KEY || '';
-  if (!apiKey) {
-    return res.status(400).json({ success: false, error: 'No API key found. Set OPENCODE_API_KEY or OPENAI_API_KEY.' });
-  }
-
   // Validate optional runtimeConfig override
   let overrideConfig: RuntimeConfig | undefined;
   if (req.body?.runtimeConfig !== undefined) {
@@ -90,6 +106,15 @@ router.post('/:id/start', (req, res) => {
     overrideConfig = parsed.data;
     // Persist the override
     repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
+  }
+
+  // Resolve API key with provider awareness
+  const apiKey = resolveApiKey(overrideConfig?.llmProvider);
+  if (!apiKey) {
+    const missing = overrideConfig?.llmProvider 
+      ? `${overrideConfig.llmProvider.toUpperCase()}_API_KEY is not set`
+      : 'No API key found. Set OPENCODE_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.';
+    return res.status(400).json({ success: false, error: missing });
   }
 
   // Atomically claim the workflow — ensures only one caller transitions
@@ -175,12 +200,6 @@ router.post('/:id/resume', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  // Resolve API key before any side effects
-  const apiKey = process.env.OPENCODE_API_KEY || process.env.OPENAI_API_KEY || '';
-  if (!apiKey) {
-    return res.status(400).json({ success: false, error: 'No API key found. Set OPENCODE_API_KEY or OPENAI_API_KEY.' });
-  }
-
   // Check for runtime config override on resume
   let resumeOverrideConfig: RuntimeConfig | undefined;
   if (req.body?.runtimeConfig !== undefined) {
@@ -193,6 +212,15 @@ router.post('/:id/resume', (req, res) => {
     }
     resumeOverrideConfig = parsed.data;
     repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
+  }
+
+  // Resolve API key with provider awareness
+  const apiKey = resolveApiKey(resumeOverrideConfig?.llmProvider);
+  if (!apiKey) {
+    const missing = resumeOverrideConfig?.llmProvider 
+      ? `${resumeOverrideConfig.llmProvider.toUpperCase()}_API_KEY is not set`
+      : 'No API key found. Set OPENCODE_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.';
+    return res.status(400).json({ success: false, error: missing });
   }
 
   // Remove stale runtime if present (from the original start before pause)

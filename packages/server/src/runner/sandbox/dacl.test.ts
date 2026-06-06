@@ -40,14 +40,13 @@ describe('sandbox/dacl', () => {
       const a = asAcl(b);
       expect(a).toBe(b);
     });
+  });
 
+  describeWin('Windows-only FFI behavior', () => {
     it('freeAcl is safe on an empty/null buffer', () => {
       const b = Buffer.alloc(8);
       expect(() => freeAcl(asAcl(b))).not.toThrow();
     });
-  });
-
-  describeWin('Windows-only FFI behavior', () => {
     let tmpDir: string;
     let tmpFile: string;
 

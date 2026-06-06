@@ -924,7 +924,10 @@ describe('transitionWorkflowStatus', () => {
     expect(result).toBe(true);
     const updated = repo.getWorkflowRun(run.id)!;
     expect(updated.status).toBe('running');
-    expect(updated.updatedAt).not.toBe(run.updatedAt);
+    // Compare timestamps instead of strict string inequality — the DB
+    // update may happen in the same millisecond as creation.
+    expect(new Date(updated.updatedAt).getTime())
+      .toBeGreaterThanOrEqual(new Date(run.updatedAt).getTime());
   });
 
   it('returns false when current status does not match expected', () => {

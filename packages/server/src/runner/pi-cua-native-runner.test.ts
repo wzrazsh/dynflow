@@ -135,7 +135,11 @@ describe('PiCuaNativeRunner', () => {
     // vi.resetModules() clears the vitest module registry so the hoisted
     // vi.mock is freshly applied. Under parallel load the module cache
     // can have stale entries that cause import.meta.resolve to stall.
+    // A macrotask delay gives the module registry a tick to stabilize
+    // after the reset, preventing the dynamic import from racing with
+    // the mock re-registration.
     vi.resetModules();
+    await new Promise(resolve => setTimeout(resolve, 10));
     const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
     expect(PiCuaNativeRunner.isAvailable()).toBe(true);
   });

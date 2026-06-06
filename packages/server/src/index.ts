@@ -9,9 +9,7 @@ dotenv.config({ path: join(__dirname, '../../../.env') });
 
 import { createApp, errorHandler } from './app.js'
 import { isDockerAvailable, cleanupContainers } from './runner/index.js';
-import { initSchema } from './db/schema.js';
-import { runMigrations, getMigrationStatus } from './db/migrations.js';
-import { markOrphanRunsAsInterrupted } from './db/repository.js';
+import { initializeDatabase } from './bootstrap/initialize.js';
 import { logger } from './logger.js';
 
 const port = Number(process.env.PORT) || 3001
@@ -19,23 +17,10 @@ const host = process.env.HOST || '127.0.0.1'
 const app = createApp()
 
 // ---------------------------------------------------------------------------
-// Initialize database tables & run pending migrations
+// Initialize database tables, run migrations & recover orphan workflows
 // ---------------------------------------------------------------------------
 
-initSchema();
-logger.info('Database tables initialized');
-
-runMigrations();
-const statuses = getMigrationStatus();
-const applied = statuses.filter((s) => s.applied).length;
-const pending = statuses.filter((s) => !s.applied).length;
-logger.info(`Migrations: ${applied} applied, ${pending} pending`);
-
-// Convert orphan running workflows to interrupted (server crash/restart)
-const orphanCount = markOrphanRunsAsInterrupted();
-if (orphanCount > 0) {
-  logger.info({ count: orphanCount }, 'Converted orphan running workflows to interrupted');
-}
+initializeDatabase();
 
 // ---------------------------------------------------------------------------
 // Startup checks & cleanup

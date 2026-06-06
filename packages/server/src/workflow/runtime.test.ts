@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { getDb, closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
 import { WorkflowRuntime } from './runtime.js';
 import type { AgentRunner, AgentRunConfig } from '../runner/types.js';
+import type { ProjectService } from '../project/project-service.js';
 import type { RuntimeConfig, SSEEvent, WorkflowDefinition } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,26 @@ class MockAgentRunner implements AgentRunner {
   async cleanup(): Promise<void> {
     // no-op
   }
+}
+
+// ---------------------------------------------------------------------------
+// Helper types for asserting event payloads
+// ---------------------------------------------------------------------------
+
+interface AgentResultSummary {
+  agentId: string;
+  status: string;
+  error?: string;
+}
+
+interface PhaseSummary {
+  name: string;
+  status: string;
+}
+
+interface WorkflowFailedData {
+  phases: PhaseSummary[];
+  agentResults: AgentResultSummary[];
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +310,68 @@ describe('WorkflowRuntime', () => {
         (e) => e.event.type === 'agent_completed',
       );
       expect(agentCompletedEvents).toHaveLength(1);
+
+      // Verify workflow_failed event payload
+      const failedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_failed',
+      );
+      expect(failedEvents).toHaveLength(1);
+      const failedData = failedEvents[0].event.data as unknown as WorkflowFailedData;
+      expect(failedData.phases).toBeDefined();
+      expect(failedData.phases.length).toBeGreaterThan(0);
+      expect(failedData.agentResults).toBeDefined();
+      expect(failedData.agentResults.length).toBeGreaterThan(0);
+
+      // The failing agent should be in agentResults
+      const failedAgentResult = failedData.agentResults.find(
+        (a) => a.agentId === agentId,
+      );
+      expect(failedAgentResult).toBeDefined();
+      expect(failedAgentResult!.status).toBe('failed');
+      expect(failedAgentResult!.error).toBe('Something went wrong');
+
+      // The succeeding agent should also be in agentResults
+      const succeededAgentResult = failedData.agentResults.find(
+        (a) => a.agentId !== agentId,
+      );
+      expect(succeededAgentResult).toBeDefined();
+
+      // Verify no workflow_completed event
+      const completedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_completed',
+      );
+      expect(completedEvents).toHaveLength(0);
+    });
+
+    it('4b — agent failure calls projectService.updateVersionStatus', async () => {
+      const run = repo.createWorkflowRun(onePhaseDefinition(), 'Test');
+      const runner = new MockAgentRunner();
+
+      // Make agent-1 fail
+      const agentId = run.phases[0].agents[0].id;
+      runner.setResult(agentId, {
+        success: false,
+        error: 'Something went wrong',
+      });
+
+      const stream = new MockStreamManager();
+      const mockUpdateVersionStatus = vi.fn().mockResolvedValue(undefined);
+      const mockProjectService = {
+        updateVersionStatus: mockUpdateVersionStatus,
+      };
+
+      const runtime = new WorkflowRuntime(runner, stream, mockProjectService as unknown as ProjectService);
+      await runtime.execute(run.id, 'test-api-key', {
+        projectName: 'test-project',
+        version: 1,
+      });
+
+      expect(mockUpdateVersionStatus).toHaveBeenCalledWith(
+        'test-project',
+        1,
+        'failed',
+        'Workflow failed due to phase errors',
+      );
     });
 
     it('5 — SSE events emitted in correct order', async () => {
@@ -488,6 +571,39 @@ describe('WorkflowRuntime', () => {
       // Phase 2: still executed (runtime does not skip subsequent phases)
       expect(saved.phases[1].status).toBe('completed');
       expect(saved.phases[1].agents[0].status).toBe('completed');
+
+      // Verify workflow_failed event payload for multi-phase failure
+      const failedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_failed',
+      );
+      expect(failedEvents).toHaveLength(1);
+      const failedData = failedEvents[0].event.data as unknown as WorkflowFailedData;
+      expect(failedData.phases).toBeDefined();
+      expect(failedData.phases.length).toBeGreaterThan(0);
+      expect(failedData.agentResults).toBeDefined();
+      expect(failedData.agentResults.length).toBeGreaterThan(0);
+
+      // The failing agent should be in agentResults
+      const failedAgentResult = failedData.agentResults.find(
+        (a) => a.agentId === phase1Agent.id,
+      );
+      expect(failedAgentResult).toBeDefined();
+      expect(failedAgentResult!.status).toBe('failed');
+      expect(failedAgentResult!.error).toBe('Phase 1 error');
+
+      // The succeeding agent (phase 2) should also be in agentResults
+      const succeededAgentResult = failedData.agentResults.find(
+        (a) => a.agentId !== phase1Agent.id,
+      );
+      expect(succeededAgentResult).toBeDefined();
+
+      // Verify phases summary includes both phases
+      const phase1Summary = failedData.phases.find((p) => p.name === 'phase-1');
+      expect(phase1Summary).toBeDefined();
+      expect(phase1Summary!.status).toBe('completed_with_errors');
+      const phase2Summary = failedData.phases.find((p) => p.name === 'phase-2');
+      expect(phase2Summary).toBeDefined();
+      expect(phase2Summary!.status).toBe('completed');
 
       // Should NOT have a workflow_completed event
       const completedEvents = stream.events.filter(

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
 import { resolvePiBinary } from './pi-binary.js';
 
+const describeWin = process.platform === 'win32' ? describe : describe.skip;
+
 /**
  * Tests for the shared `resolvePiBinary()` helper.
  *
@@ -49,7 +51,7 @@ describe('resolvePiBinary()', () => {
     });
   });
 
-  describe('Windows: .cmd shim resolution', () => {
+  describeWin('Windows: .cmd shim resolution', () => {
     it('resolves an unqualified "pi" to a .cmd shim found in PATH', () => {
       // Create a fake .cmd shim in the temp dir, then point PATH there.
       writeFileSync(join(tmp, 'pi.cmd'), '@echo off\r\n');
@@ -126,7 +128,7 @@ describe('resolvePiBinary()', () => {
     });
   });
 
-  describe('Windows: .exe passthrough', () => {
+  describeWin('Windows: .exe passthrough', () => {
     it('returns an existing .exe path with no extra args', () => {
       const exe = join(tmp, 'pi.exe');
       writeFileSync(exe, 'fake exe\n');
@@ -146,7 +148,7 @@ describe('resolvePiBinary()', () => {
     });
   });
 
-  describe('Windows: not-found / fallback paths', () => {
+  describeWin('Windows: not-found / fallback paths', () => {
     it('returns shim path unchanged when no cli.js can be located', () => {
       // Shim exists but no @earendil-works/pi-coding-agent/dist/cli.js
       // anywhere up the parent chain. We get the fallback (shim passthrough).

@@ -28,6 +28,8 @@ import { join } from 'node:path';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { AddressInfo } from 'node:net';
 
+const describeWin = process.platform === 'win32' ? describe : describe.skip;
+
 // --- Mocks for pi-agent-core and pi-ai ------------------------------------
 
 const mockRunAgentLoop = vi.fn();
@@ -354,125 +356,127 @@ describe('PiCuaNativeRunner', () => {
     expect(result.files!.some((f) => f.includes('index.html'))).toBe(true);
   });
 
-  it('run() rejects paths that escape the workspace', async () => {
-    const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
-    const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
-    await runner.run({
-      agentId: 'test',
-      prompt: 'hi',
-      timeoutMs: 5000,
-      workspacePath: workDir,
-      workspaceMount: workDir,
+  describeWin('Windows: cross-drive / escape path rejection', () => {
+    it('run() rejects paths that escape the workspace', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+      });
+      const context = mockRunAgentLoop.mock.calls[0][1];
+      const readTool = (
+        context.tools as Array<{
+          name: string;
+          execute: (id: string, params: Record<string, unknown>) => Promise<{
+            content: Array<{ type: string; text?: string }>;
+            details?: unknown;
+          }>;
+        }>
+      ).find((t) => t.name === 'read_file')!;
+      const result = await readTool.execute('test-id', {
+        path: 'C:/Windows/System32/drivers/etc/hosts',
+      });
+      const firstText = result.content[0]?.text;
+      expect(typeof firstText).toBe('string');
+      expect(firstText).toMatch(/error:.*outside the workspace/);
     });
-    const context = mockRunAgentLoop.mock.calls[0][1];
-    const readTool = (
-      context.tools as Array<{
-        name: string;
-        execute: (id: string, params: Record<string, unknown>) => Promise<{
-          content: Array<{ type: string; text?: string }>;
-          details?: unknown;
-        }>;
-      }>
-    ).find((t) => t.name === 'read_file')!;
-    const result = await readTool.execute('test-id', {
-      path: 'C:/Windows/System32/drivers/etc/hosts',
-    });
-    const firstText = result.content[0]?.text;
-    expect(typeof firstText).toBe('string');
-    expect(firstText).toMatch(/error:.*outside the workspace/);
-  });
 
-  it('run() rejects cross-drive absolute path in read_file', async () => {
-    const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
-    const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
-    await runner.run({
-      agentId: 'test',
-      prompt: 'hi',
-      timeoutMs: 5000,
-      workspacePath: workDir,
-      workspaceMount: workDir,
+    it('run() rejects cross-drive absolute path in read_file', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+      });
+      const context = mockRunAgentLoop.mock.calls[0][1];
+      const readTool = (
+        context.tools as Array<{
+          name: string;
+          execute: (id: string, params: Record<string, unknown>) => Promise<{
+            content: Array<{ type: string; text?: string }>;
+            details?: unknown;
+          }>;
+        }>
+      ).find((t) => t.name === 'read_file')!;
+      // On Windows, `D:/` is a different drive than the temp directory
+      // (typically C:\), so `path.relative` returns an absolute path that
+      // the `isAbsolute(rel)` check inside `resolveInside` must reject.
+      // On POSIX, `D:/` is not absolute and resolves as a relative path
+      // inside the workspace — the test still passes because the file
+      // does not exist and the error is caught by the tool's try/catch.
+      const result = await readTool.execute('test-id', {
+        path: 'D:/cross-drive-test-escape.txt',
+      });
+      const firstText = result.content[0]?.text;
+      expect(typeof firstText).toBe('string');
+      expect(firstText).toMatch(/error/i);
     });
-    const context = mockRunAgentLoop.mock.calls[0][1];
-    const readTool = (
-      context.tools as Array<{
-        name: string;
-        execute: (id: string, params: Record<string, unknown>) => Promise<{
-          content: Array<{ type: string; text?: string }>;
-          details?: unknown;
-        }>;
-      }>
-    ).find((t) => t.name === 'read_file')!;
-    // On Windows, `D:/` is a different drive than the temp directory
-    // (typically C:\), so `path.relative` returns an absolute path that
-    // the `isAbsolute(rel)` check inside `resolveInside` must reject.
-    // On POSIX, `D:/` is not absolute and resolves as a relative path
-    // inside the workspace — the test still passes because the file
-    // does not exist and the error is caught by the tool's try/catch.
-    const result = await readTool.execute('test-id', {
-      path: 'D:/cross-drive-test-escape.txt',
-    });
-    const firstText = result.content[0]?.text;
-    expect(typeof firstText).toBe('string');
-    expect(firstText).toMatch(/error/i);
-  });
 
-  it('run() rejects cross-drive absolute path in write_file', async () => {
-    const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
-    const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
-    await runner.run({
-      agentId: 'test',
-      prompt: 'hi',
-      timeoutMs: 5000,
-      workspacePath: workDir,
-      workspaceMount: workDir,
+    it('run() rejects cross-drive absolute path in write_file', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+      });
+      const context = mockRunAgentLoop.mock.calls[0][1];
+      const writeTool = (
+        context.tools as Array<{
+          name: string;
+          execute: (id: string, params: Record<string, unknown>) => Promise<{
+            content: Array<{ type: string; text?: string }>;
+            details?: unknown;
+          }>;
+        }>
+      ).find((t) => t.name === 'write_file')!;
+      const result = await writeTool.execute('test-id', {
+        path: 'D:/cross-drive-test-escape.txt',
+        content: 'hello',
+      });
+      const firstText = result.content[0]?.text;
+      expect(typeof firstText).toBe('string');
+      expect(firstText).toMatch(/error/i);
     });
-    const context = mockRunAgentLoop.mock.calls[0][1];
-    const writeTool = (
-      context.tools as Array<{
-        name: string;
-        execute: (id: string, params: Record<string, unknown>) => Promise<{
-          content: Array<{ type: string; text?: string }>;
-          details?: unknown;
-        }>;
-      }>
-    ).find((t) => t.name === 'write_file')!;
-    const result = await writeTool.execute('test-id', {
-      path: 'D:/cross-drive-test-escape.txt',
-      content: 'hello',
-    });
-    const firstText = result.content[0]?.text;
-    expect(typeof firstText).toBe('string');
-    expect(firstText).toMatch(/error/i);
-  });
 
-  it('run() rejects cross-drive absolute path in edit_file', async () => {
-    const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
-    const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
-    await runner.run({
-      agentId: 'test',
-      prompt: 'hi',
-      timeoutMs: 5000,
-      workspacePath: workDir,
-      workspaceMount: workDir,
+    it('run() rejects cross-drive absolute path in edit_file', async () => {
+      const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
+      const runner = new PiCuaNativeRunner({ cuaServerUrl: `http://127.0.0.1:${cuaPort}` });
+      await runner.run({
+        agentId: 'test',
+        prompt: 'hi',
+        timeoutMs: 5000,
+        workspacePath: workDir,
+        workspaceMount: workDir,
+      });
+      const context = mockRunAgentLoop.mock.calls[0][1];
+      const editTool = (
+        context.tools as Array<{
+          name: string;
+          execute: (id: string, params: Record<string, unknown>) => Promise<{
+            content: Array<{ type: string; text?: string }>;
+            details?: unknown;
+          }>;
+        }>
+      ).find((t) => t.name === 'edit_file')!;
+      const result = await editTool.execute('test-id', {
+        path: 'D:/cross-drive-test-escape.txt',
+        oldText: 'a',
+        newText: 'b',
+      });
+      const firstText = result.content[0]?.text;
+      expect(typeof firstText).toBe('string');
+      expect(firstText).toMatch(/error/i);
     });
-    const context = mockRunAgentLoop.mock.calls[0][1];
-    const editTool = (
-      context.tools as Array<{
-        name: string;
-        execute: (id: string, params: Record<string, unknown>) => Promise<{
-          content: Array<{ type: string; text?: string }>;
-          details?: unknown;
-        }>;
-      }>
-    ).find((t) => t.name === 'edit_file')!;
-    const result = await editTool.execute('test-id', {
-      path: 'D:/cross-drive-test-escape.txt',
-      oldText: 'a',
-      newText: 'b',
-    });
-    const firstText = result.content[0]?.text;
-    expect(typeof firstText).toBe('string');
-    expect(firstText).toMatch(/error/i);
   });
 
   it('run() accepts a relative path that resolves inside the workspace in read_file', async () => {

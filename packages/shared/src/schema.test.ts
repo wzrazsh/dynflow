@@ -166,4 +166,72 @@ describe('validateWorkflowDefinition', () => {
     expect(result.valid).toBe(false);
     expect(firstErrorCode(result)).toBe('INVALID_INPUT');
   });
+
+  // -----------------------------------------------------------------------
+  // 10. workspace with git URL → accepted
+  // -----------------------------------------------------------------------
+  it('accepts a workflow with a workspace.git config', () => {
+    const result = validateWorkflowDefinition({
+      name: 'With Workspace',
+      workspace: { git: 'https://github.com/foo/bar', branch: 'main' },
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [{ name: 'agent-1', prompt: 'Do something' }],
+        },
+      ],
+    });
+    expect(validResult(result)).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // 11. workspace with only path → accepted
+  // -----------------------------------------------------------------------
+  it('accepts a workspace with only path', () => {
+    const result = validateWorkflowDefinition({
+      name: 'Local Workspace',
+      workspace: { path: '/tmp/local-repo' },
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [{ name: 'agent-1', prompt: 'Do something' }],
+        },
+      ],
+    });
+    expect(validResult(result)).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // 12. empty workspace object → rejected
+  // -----------------------------------------------------------------------
+  it('rejects an empty workspace object (must specify git or path)', () => {
+    const result = validateWorkflowDefinition({
+      name: 'Empty Workspace',
+      workspace: {},
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [{ name: 'agent-1', prompt: 'Do something' }],
+        },
+      ],
+    });
+    expect(result.valid).toBe(false);
+  });
+
+  // -----------------------------------------------------------------------
+  // 13. invalid git URL → rejected
+  // -----------------------------------------------------------------------
+  it('rejects a workspace with an invalid git URL', () => {
+    const result = validateWorkflowDefinition({
+      name: 'Bad Git URL',
+      workspace: { git: 'not-a-url' },
+      phases: [
+        {
+          name: 'phase-1',
+          agents: [{ name: 'agent-1', prompt: 'Do something' }],
+        },
+      ],
+    });
+    expect(result.valid).toBe(false);
+  });
 });

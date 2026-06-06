@@ -2,9 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   PhaseExecutor,
   ConcurrencyLimiter,
-  type AgentResult,
 } from './phase-executor.js';
-import type { AgentRun } from '@dynflow/shared';
+import type { AgentRun, RuntimeConfig } from '@dynflow/shared';
 import type { AgentRunner, AgentRunConfig } from '../runner/types.js';
 
 // ---------------------------------------------------------------------------
@@ -356,5 +355,103 @@ describe('ConcurrencyLimiter', () => {
 
     await Promise.all(tasks);
     expect(count).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PhaseExecutor with runtimeConfig
+// ---------------------------------------------------------------------------
+
+describe('PhaseExecutor with runtimeConfig', () => {
+  it('uses runtimeConfig.model when agent.model is unset', async () => {
+    const mockRunner = {
+      run: async (config: AgentRunConfig) => {
+        // Capture state on mock for assertions
+        mockRunner.lastConfig = config;
+        return { success: true, containerId: 'c1', output: 'done', files: [], fileCount: 0, totalSize: 0, outputDir: '/app/output' };
+      },
+      stop: async () => {},
+      cleanup: async () => {},
+      lastConfig: undefined as AgentRunConfig | undefined,
+    };
+    const executor = new PhaseExecutor(mockRunner as unknown as AgentRunner, 2000, { model: 'claude-sonnet' } as RuntimeConfig);
+
+    const agents = [createAgentRun('a1', 'test', { prompt: 'do it' })];
+    await executor.execute(agents, 'key', 16, '');
+
+    expect(mockRunner.lastConfig?.model).toBe('claude-sonnet');
+  });
+
+  it('agent.model wins over runtimeConfig.model', async () => {
+    const mockRunner = {
+      run: async (config: AgentRunConfig) => {
+        mockRunner.lastConfig = config;
+        return { success: true, containerId: 'c1', output: 'done', files: [], fileCount: 0, totalSize: 0, outputDir: '/app/output' };
+      },
+      stop: async () => {},
+      cleanup: async () => {},
+      lastConfig: undefined as AgentRunConfig | undefined,
+    };
+    const executor = new PhaseExecutor(mockRunner as unknown as AgentRunner, 2000, { model: 'claude-sonnet' } as RuntimeConfig);
+
+    const agents = [createAgentRun('a1', 'test', { prompt: 'do it', model: 'gpt-4o' })];
+    await executor.execute(agents, 'key', 16, '');
+
+    expect(mockRunner.lastConfig?.model).toBe('gpt-4o');
+  });
+
+  it('falls back to gpt-4o when neither agent.model nor runtimeConfig.model is set', async () => {
+    const mockRunner = {
+      run: async (config: AgentRunConfig) => {
+        mockRunner.lastConfig = config;
+        return { success: true, containerId: 'c1', output: 'done', files: [], fileCount: 0, totalSize: 0, outputDir: '/app/output' };
+      },
+      stop: async () => {},
+      cleanup: async () => {},
+      lastConfig: undefined as AgentRunConfig | undefined,
+    };
+    const executor = new PhaseExecutor(mockRunner as unknown as AgentRunner);
+
+    const agents = [createAgentRun('a1', 'test', { prompt: 'do it' })];
+    await executor.execute(agents, 'key', 16, '');
+
+    expect(mockRunner.lastConfig?.model).toBe('gpt-4o');
+  });
+
+  it('threads llmProvider to AgentRunConfig', async () => {
+    const mockRunner = {
+      run: async (config: AgentRunConfig) => {
+        mockRunner.lastConfig = config;
+        return { success: true, containerId: 'c1', output: 'done', files: [], fileCount: 0, totalSize: 0, outputDir: '/app/output' };
+      },
+      stop: async () => {},
+      cleanup: async () => {},
+      lastConfig: undefined as AgentRunConfig | undefined,
+    };
+    const executor = new PhaseExecutor(mockRunner as unknown as AgentRunner, 2000, { llmProvider: 'anthropic' } as RuntimeConfig);
+
+    const agents = [createAgentRun('a1', 'test', { prompt: 'do it' })];
+    await executor.execute(agents, 'key', 16, '');
+
+    expect(mockRunner.lastConfig?.llmProvider).toBe('anthropic');
+    expect(mockRunner.lastConfig?.provider).toBe('anthropic');
+  });
+
+  it('llmProvider is undefined when unset', async () => {
+    const mockRunner = {
+      run: async (config: AgentRunConfig) => {
+        mockRunner.lastConfig = config;
+        return { success: true, containerId: 'c1', output: 'done', files: [], fileCount: 0, totalSize: 0, outputDir: '/app/output' };
+      },
+      stop: async () => {},
+      cleanup: async () => {},
+      lastConfig: undefined as AgentRunConfig | undefined,
+    };
+    const executor = new PhaseExecutor(mockRunner as unknown as AgentRunner);
+
+    const agents = [createAgentRun('a1', 'test', { prompt: 'do it' })];
+    await executor.execute(agents, 'key', 16, '');
+
+    expect(mockRunner.lastConfig?.llmProvider).toBeUndefined();
   });
 });

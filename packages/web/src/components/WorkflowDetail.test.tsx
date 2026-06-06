@@ -3,10 +3,22 @@ import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WorkflowDetail from './WorkflowDetail';
 
-// Mock the API module
+// Mock the API modules
 vi.mock('../api/workflows', () => ({
   fetchWorkflow: vi.fn(),
   controlWorkflow: vi.fn(),
+}));
+
+vi.mock('../api/system', () => ({
+  fetchSystemInfo: vi.fn().mockResolvedValue({
+    success: true,
+    data: {
+      runners: [{ id: 'cua', label: 'Cua', description: 'Default', available: true }],
+      providers: [{ id: 'opencode', label: 'OpenCode', available: true }],
+      models: { opencode: ['gpt-4o'] },
+      defaults: { runner: 'cua', provider: 'opencode', model: 'gpt-4o' },
+    },
+  }),
 }));
 
 import { fetchWorkflow, controlWorkflow } from '../api/workflows';
@@ -119,14 +131,30 @@ describe('WorkflowDetail', () => {
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
   });
 
-  it('calls controlWorkflow when Start is clicked', async () => {
+  it('opens start dialog when Start is clicked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchWorkflow).mockResolvedValue({ success: true, data: mockWorkflow });
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeDefined());
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+    // Dialog should show the workflow name in its heading
+    await waitFor(() => expect(screen.getByText('Start: Test Workflow')).toBeDefined());
+  });
+
+  it('calls controlWorkflow when dialog Start is confirmed', async () => {
     const user = userEvent.setup();
     vi.mocked(fetchWorkflow).mockResolvedValue({ success: true, data: mockWorkflow });
     vi.mocked(controlWorkflow).mockResolvedValue({ success: true, data: { status: 'running' } });
     render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeDefined());
     await user.click(screen.getByRole('button', { name: 'Start' }));
-    await waitFor(() => expect(controlWorkflow).toHaveBeenCalledWith('wf-1', 'start'));
+    await waitFor(() => expect(screen.getByText('Start: Test Workflow')).toBeDefined());
+    // Click the Start button inside the dialog
+    const buttons = screen.getAllByRole('button', { name: 'Start' });
+    await user.click(buttons[1]);
+    await waitFor(() =>
+      expect(controlWorkflow).toHaveBeenCalledWith('wf-1', 'start', { runtimeConfig: {} }),
+    );
   });
 
   it('expands phase to show agents', async () => {
@@ -157,10 +185,79 @@ describe('WorkflowDetail', () => {
     expect(screen.getByText(/Agent execution failed: API timeout/)).toBeDefined();
   });
 
+  it('renders noVNC and Cua API links for agent that ran in a Cua sandbox', async () => {
+    const user = userEvent.setup();
+    const workflowWithCuaAgent = {
+      ...mockWorkflow,
+      status: 'running',
+      phases: [
+        {
+          ...mockWorkflow.phases[0],
+          agents: [
+            {
+              id: 'agent-cua',
+              name: 'desktop-pilot',
+              status: 'completed',
+              prompt: 'Open the browser and verify the dashboard renders',
+              output: 'Done — screenshot confirms dashboard loaded.',
+              noVncUrl: 'http://localhost:6942',
+              cuaApiUrl: 'http://localhost:8042',
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(fetchWorkflow).mockResolvedValue({ success: true, data: workflowWithCuaAgent });
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+    await waitFor(() => expect(screen.getByText('Research')).toBeDefined());
+    await user.click(screen.getByText('Research'));
+
+    const noVncLink = screen.getByRole('link', { name: /Cua Desktop/i }) as HTMLAnchorElement;
+    expect(noVncLink.href).toBe('http://localhost:6942/');
+    expect(noVncLink.target).toBe('_blank');
+    expect(noVncLink.rel).toContain('noopener');
+
+    const apiLink = screen.getByRole('link', { name: /Cua API/i }) as HTMLAnchorElement;
+    expect(apiLink.href).toBe('http://localhost:8042/');
+  });
+
+  it('does not render Cua links when agent has no sandbox URLs', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchWorkflow).mockResolvedValue({ success: true, data: mockWorkflow });
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+    await waitFor(() => expect(screen.getByText('Research')).toBeDefined());
+    await user.click(screen.getByText('Research'));
+
+    expect(screen.queryByRole('link', { name: /Cua Desktop/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Cua API/i })).toBeNull();
+  });
+
   it('shows error state when fetch fails', async () => {
     vi.mocked(fetchWorkflow).mockResolvedValue({ success: false, error: 'Workflow not found' });
     render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
     await waitFor(() => expect(screen.getByText('Workflow not found')).toBeDefined());
+  });
+
+  it('renders chips when workflow has runtimeConfig', async () => {
+    const chipWorkflow = {
+      id: 'test-1',
+      name: 'Test',
+      status: 'pending' as const,
+      runtimeConfig: { runner: 'cua', model: 'gpt-4o' },
+      phases: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    vi.mocked(fetchWorkflow).mockResolvedValueOnce({
+      success: true,
+      data: chipWorkflow,
+    });
+
+    render(<WorkflowDetail workflowId="test-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('cua')).toBeDefined();
+      expect(screen.getByText('gpt-4o')).toBeDefined();
+    });
   });
 
   it('calls onBack when back button is clicked', async () => {

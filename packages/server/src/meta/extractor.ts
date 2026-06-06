@@ -368,7 +368,7 @@ function parseYamlObject(lines: string[], start: number, baseIndent: number): Pa
     if (colonIdx === -1) break; // Not a key-value pair
 
     const key = trimmed.slice(0, colonIdx).trim();
-    let rest = trimmed.slice(colonIdx + 1).trim();
+    const rest = trimmed.slice(colonIdx + 1).trim();
 
     if (rest === '') {
       // Value might be on the next line(s) with more indentation

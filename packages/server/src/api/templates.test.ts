@@ -583,3 +583,55 @@ describe('POST /api/templates/:id/run — template link on workflow_runs', () =>
     expect(row.template_version).toBe(1);
   });
 });
+
+describe('GET /api/templates/used-in-workflows', () => {
+  it('35 — returns templates sorted by workflow count descending', async () => {
+    const { getDb } = await import('../db/connection.js');
+    const db = getDb();
+
+    // Create 2 templates
+    const mqTemplate = templateRepo.createTemplate({
+      name: 'MathQuest',
+      description: 'Math game generator',
+      script: VALID_SCRIPT,
+    });
+    const fooTemplate = templateRepo.createTemplate({
+      name: 'Foo Template',
+      description: 'Test template',
+      script: VALID_SCRIPT,
+    });
+
+    const now = new Date().toISOString();
+    const def = JSON.stringify({ name: 'test', phases: [] });
+
+    // Insert workflow runs: 2 for MathQuest, 1 for Foo
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run('run-1', 'MQ Run 1', 'completed', def, now, now, mqTemplate.id);
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run('run-2', 'MQ Run 2', 'completed', def, now, now, mqTemplate.id);
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run('run-3', 'Foo Run 1', 'completed', def, now, now, fooTemplate.id);
+
+    const app = createApp();
+    const res = await request(app)
+      .get('/api/templates/used-in-workflows')
+      .expect('Content-Type', /json/);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveLength(2);
+
+    // MathQuest should be first with count 2 (most referenced)
+    expect(res.body.data[0].name).toBe('MathQuest');
+    expect(res.body.data[0].workflowCount).toBe(2);
+    expect(res.body.data[0].id).toBe(mqTemplate.id);
+
+    // Foo Template should be second with count 1
+    expect(res.body.data[1].name).toBe('Foo Template');
+    expect(res.body.data[1].workflowCount).toBe(1);
+    expect(res.body.data[1].id).toBe(fooTemplate.id);
+  });
+});

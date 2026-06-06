@@ -1,7 +1,24 @@
+import type { RuntimeConfig } from './system.js';
+
 // Core definition types
 export interface WorkflowDefinition {
   name: string;
+  /** Optional: prepare a workspace directory before agents run. */
+  workspace?: WorkspaceConfig;
+  /** Optional: configure runtime environment (runner, provider, model). */
+  runtimeConfig?: RuntimeConfig;
   phases: PhaseDefinition[];
+}
+
+export interface WorkspaceConfig {
+  /** Git URL to clone into the workspace at run start. */
+  git?: string;
+  /** Branch to checkout (default: 'main'). */
+  branch?: string;
+  /** Local host path. If set, takes precedence over `git`. */
+  path?: string;
+  /** Pin to a specific git commit. */
+  commit?: string;
 }
 
 export interface WorkflowScript {
@@ -36,6 +53,18 @@ export interface WorkflowRun {
   templateId?: string;
   /** The template version that was active when the run was created. */
   templateVersion?: number;
+  /** Host path to the shared workspace directory for this run. */
+  workspacePath?: string;
+  /** Git URL the workspace was cloned from (if applicable). */
+  workspaceGitUrl?: string;
+  /** Git branch the workspace was checked out to. */
+  workspaceBranch?: string;
+  /** Original workflow script that produced this run. */
+  script?: string;
+  /** Optional: runtime environment configuration for the run. */
+  runtimeConfig?: RuntimeConfig;
+  /** Optional: the validated workflow definition for the run. */
+  definition?: WorkflowDefinition;
 }
 
 export interface PhaseRun {
@@ -61,6 +90,10 @@ export interface AgentRun {
   fileCount?: number;
   totalSize?: number;
   outputDir?: string;
+  /** noVNC URL (set when the agent ran in a Cua sandbox). */
+  noVncUrl?: string;
+  /** Cua computer-server API URL. */
+  cuaApiUrl?: string;
 }
 
 // Status enums as string unions
@@ -128,6 +161,13 @@ export interface WorkflowListResponse {
   page: number;
   pageSize: number;
   total: number;
+}
+
+export interface WorkflowListFilters {
+  name?: string;
+  status?: WorkflowStatus;
+  templateId?: string;
+  sinceDays?: number;
 }
 
 export interface ValidationResult {

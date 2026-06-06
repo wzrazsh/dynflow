@@ -1,0 +1,10 @@
+{
+  "name": "@dynflow/cua-agent",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Cua sandbox image with Pi coding agent pre-installed. Built and run by DynFlow.",
+  "scripts": {
+    "build:image": "docker build -t dynflow-cua-pi:latest .",
+    "smoke": "docker run --rm -d --name cua-smoke dynflow-cua-pi:latest sleep 30"
+  }
+}

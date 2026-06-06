@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RuntimeConfigSchema } from './system.js';
 import type { ValidationResult, ValidationError } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -43,12 +44,25 @@ const PhaseSchema = z.object({
     .optional(),
 });
 
+const WorkspaceConfigSchema = z
+  .object({
+    git: z.string().url('workspace.git must be a valid URL').optional(),
+    branch: z.string().optional(),
+    path: z.string().min(1, 'workspace.path must not be empty').optional(),
+    commit: z.string().optional(),
+  })
+  .refine((data) => data.git !== undefined || data.path !== undefined, {
+    message: 'workspace must specify either git or path',
+  });
+
 const WorkflowDefinitionSchema = z
   .object({
     name: z
       .string()
       .min(1, 'Workflow name is required')
       .max(200, 'Workflow name must not exceed 200 characters'),
+    workspace: WorkspaceConfigSchema.optional(),
+    runtimeConfig: RuntimeConfigSchema.optional(),
     phases: z
       .array(PhaseSchema)
       .min(1, 'At least one phase is required')

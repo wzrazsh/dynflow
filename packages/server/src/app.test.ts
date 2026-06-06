@@ -23,6 +23,34 @@ describe('GET /api/health', () => {
       .set('Origin', 'http://localhost:5173')
     expect(res.headers['access-control-allow-origin']).toBeDefined()
   })
+
+  it('rejects unlisted CORS origin', async () => {
+    const res = await request(app)
+      .get('/api/health')
+      .set('Origin', 'http://evil.example')
+    expect(res.headers['access-control-allow-origin']).toBeUndefined()
+  })
+
+  it('allows 127.0.0.1 CORS origin (default)', async () => {
+    const res = await request(app)
+      .get('/api/health')
+      .set('Origin', 'http://127.0.0.1:5173')
+    expect(res.headers['access-control-allow-origin']).toBe('http://127.0.0.1:5173')
+  })
+
+  it('allows custom origin when DYNFLOW_CORS_ORIGINS is set', async () => {
+    const original = process.env.DYNFLOW_CORS_ORIGINS
+    process.env.DYNFLOW_CORS_ORIGINS = 'http://custom.example:3000'
+    try {
+      const customApp = createApp()
+      const res = await request(customApp)
+        .get('/api/health')
+        .set('Origin', 'http://custom.example:3000')
+      expect(res.headers['access-control-allow-origin']).toBe('http://custom.example:3000')
+    } finally {
+      process.env.DYNFLOW_CORS_ORIGINS = original
+    }
+  })
 })
 
 describe('Global error handler', () => {
@@ -49,7 +77,6 @@ describe('Global error handler', () => {
     const app = createApp()
     const router = Router()
     router.get('/api/throw-string', () => {
-      // eslint-disable-next-line no-throw-literal
       throw 'string error'
     })
     app.use(router)

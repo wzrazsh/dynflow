@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { getDb, closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
 import { WorkflowRuntime } from './runtime.js';
 import type { AgentRunner, AgentRunConfig } from '../runner/types.js';
-import type { SSEEvent } from '@dynflow/shared';
-import type { WorkflowDefinition } from '@dynflow/shared';
+import type { ProjectService } from '../project/project-service.js';
+import type { RuntimeConfig, SSEEvent, WorkflowDefinition } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,6 +121,26 @@ class MockAgentRunner implements AgentRunner {
 }
 
 // ---------------------------------------------------------------------------
+// Helper types for asserting event payloads
+// ---------------------------------------------------------------------------
+
+interface AgentResultSummary {
+  agentId: string;
+  status: string;
+  error?: string;
+}
+
+interface PhaseSummary {
+  name: string;
+  status: string;
+}
+
+interface WorkflowFailedData {
+  phases: PhaseSummary[];
+  agentResults: AgentResultSummary[];
+}
+
+// ---------------------------------------------------------------------------
 // Setup — fresh in-memory DB before each test
 // ---------------------------------------------------------------------------
 
@@ -181,11 +201,10 @@ describe('WorkflowRuntime', () => {
       const runner = new MockAgentRunner();
       const stream = new MockStreamManager();
 
-      // Track phase start order
-      const phaseStartOrder: string[] = [];
-      const originalGetRun = repo.getWorkflowRun.bind(repo);
-      // Spy on phase_status updates to record order
-      const originalUpdatePhase = repo.updatePhaseStatus.bind(repo);
+      // Track phase start order — was used historically; kept for reference
+      // const phaseStartOrder: string[] = [];
+      // const originalGetRun = repo.getWorkflowRun.bind(repo);
+      // const originalUpdatePhase = repo.updatePhaseStatus.bind(repo);
 
       // We'll intercept after the fact — just verify events
       const runtime = new WorkflowRuntime(runner, stream);
@@ -254,7 +273,7 @@ describe('WorkflowRuntime', () => {
       expect(completedEvents).toHaveLength(0);
     });
 
-    it('4 — agent failure → phase completed_with_errors, workflow continues', async () => {
+    it('4 — agent failure → phase completed_with_errors, workflow failed', async () => {
       const run = repo.createWorkflowRun(onePhaseDefinition(), 'Test');
       const runner = new MockAgentRunner();
 
@@ -270,7 +289,7 @@ describe('WorkflowRuntime', () => {
       await runtime.execute(run.id, 'test-api-key');
 
       const saved = repo.getWorkflowRun(run.id)!;
-      expect(saved.status).toBe('completed');
+      expect(saved.status).toBe('failed');
 
       // Phase should be completed_with_errors
       expect(saved.phases[0].status).toBe('completed_with_errors');
@@ -291,6 +310,68 @@ describe('WorkflowRuntime', () => {
         (e) => e.event.type === 'agent_completed',
       );
       expect(agentCompletedEvents).toHaveLength(1);
+
+      // Verify workflow_failed event payload
+      const failedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_failed',
+      );
+      expect(failedEvents).toHaveLength(1);
+      const failedData = failedEvents[0].event.data as unknown as WorkflowFailedData;
+      expect(failedData.phases).toBeDefined();
+      expect(failedData.phases.length).toBeGreaterThan(0);
+      expect(failedData.agentResults).toBeDefined();
+      expect(failedData.agentResults.length).toBeGreaterThan(0);
+
+      // The failing agent should be in agentResults
+      const failedAgentResult = failedData.agentResults.find(
+        (a) => a.agentId === agentId,
+      );
+      expect(failedAgentResult).toBeDefined();
+      expect(failedAgentResult!.status).toBe('failed');
+      expect(failedAgentResult!.error).toBe('Something went wrong');
+
+      // The succeeding agent should also be in agentResults
+      const succeededAgentResult = failedData.agentResults.find(
+        (a) => a.agentId !== agentId,
+      );
+      expect(succeededAgentResult).toBeDefined();
+
+      // Verify no workflow_completed event
+      const completedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_completed',
+      );
+      expect(completedEvents).toHaveLength(0);
+    });
+
+    it('4b — agent failure calls projectService.updateVersionStatus', async () => {
+      const run = repo.createWorkflowRun(onePhaseDefinition(), 'Test');
+      const runner = new MockAgentRunner();
+
+      // Make agent-1 fail
+      const agentId = run.phases[0].agents[0].id;
+      runner.setResult(agentId, {
+        success: false,
+        error: 'Something went wrong',
+      });
+
+      const stream = new MockStreamManager();
+      const mockUpdateVersionStatus = vi.fn().mockResolvedValue(undefined);
+      const mockProjectService = {
+        updateVersionStatus: mockUpdateVersionStatus,
+      };
+
+      const runtime = new WorkflowRuntime(runner, stream, mockProjectService as unknown as ProjectService);
+      await runtime.execute(run.id, 'test-api-key', {
+        projectName: 'test-project',
+        version: 1,
+      });
+
+      expect(mockUpdateVersionStatus).toHaveBeenCalledWith(
+        'test-project',
+        1,
+        'failed',
+        'Workflow failed due to phase errors',
+      );
     });
 
     it('5 — SSE events emitted in correct order', async () => {
@@ -330,7 +411,6 @@ describe('WorkflowRuntime', () => {
       const runner = new MockAgentRunner();
 
       // Phase 1: agent-1 succeeds, agent-2 fails
-      const phase1Agent1 = run.phases[0].agents[0];
       const phase1Agent2 = run.phases[0].agents[1];
       runner.setResult(phase1Agent2.id, {
         success: false,
@@ -448,6 +528,105 @@ describe('WorkflowRuntime', () => {
       expect(agent.output).toBeDefined();
       expect(agent.output!.length).toBeLessThanOrEqual(100_000 + '...[truncated]'.length);
       expect(agent.output).toMatch(/\.\.\.\[truncated\]$/);
+    });
+
+    it('11 — multi-phase pipeline: one phase fails → workflow marked failed', async () => {
+      const def: WorkflowDefinition = {
+        name: 'multi-phase-failure',
+        phases: [
+          {
+            name: 'phase-1',
+            agents: [{ name: 'failing-agent', prompt: 'Will fail' }],
+          },
+          {
+            name: 'phase-2',
+            agents: [{ name: 'succeeding-agent', prompt: 'Will succeed' }],
+          },
+        ],
+      };
+      const run = repo.createWorkflowRun(def, 'MultiPhaseFailure');
+      const runner = new MockAgentRunner();
+
+      // Phase 1 agent fails
+      const phase1Agent = run.phases[0].agents[0];
+      runner.setResult(phase1Agent.id, {
+        success: false,
+        error: 'Phase 1 error',
+      });
+
+      const stream = new MockStreamManager();
+      const runtime = new WorkflowRuntime(runner, stream);
+      await runtime.execute(run.id, 'test-api-key');
+
+      const saved = repo.getWorkflowRun(run.id)!;
+
+      // Workflow marked failed (not completed) because a phase had errors
+      expect(saved.status).toBe('failed');
+
+      // Phase 1: completed_with_errors
+      expect(saved.phases[0].status).toBe('completed_with_errors');
+      expect(saved.phases[0].agents[0].status).toBe('failed');
+      expect(saved.phases[0].agents[0].error).toBe('Phase 1 error');
+
+      // Phase 2: still executed (runtime does not skip subsequent phases)
+      expect(saved.phases[1].status).toBe('completed');
+      expect(saved.phases[1].agents[0].status).toBe('completed');
+
+      // Verify workflow_failed event payload for multi-phase failure
+      const failedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_failed',
+      );
+      expect(failedEvents).toHaveLength(1);
+      const failedData = failedEvents[0].event.data as unknown as WorkflowFailedData;
+      expect(failedData.phases).toBeDefined();
+      expect(failedData.phases.length).toBeGreaterThan(0);
+      expect(failedData.agentResults).toBeDefined();
+      expect(failedData.agentResults.length).toBeGreaterThan(0);
+
+      // The failing agent should be in agentResults
+      const failedAgentResult = failedData.agentResults.find(
+        (a) => a.agentId === phase1Agent.id,
+      );
+      expect(failedAgentResult).toBeDefined();
+      expect(failedAgentResult!.status).toBe('failed');
+      expect(failedAgentResult!.error).toBe('Phase 1 error');
+
+      // The succeeding agent (phase 2) should also be in agentResults
+      const succeededAgentResult = failedData.agentResults.find(
+        (a) => a.agentId !== phase1Agent.id,
+      );
+      expect(succeededAgentResult).toBeDefined();
+
+      // Verify phases summary includes both phases
+      const phase1Summary = failedData.phases.find((p) => p.name === 'phase-1');
+      expect(phase1Summary).toBeDefined();
+      expect(phase1Summary!.status).toBe('completed_with_errors');
+      const phase2Summary = failedData.phases.find((p) => p.name === 'phase-2');
+      expect(phase2Summary).toBeDefined();
+      expect(phase2Summary!.status).toBe('completed');
+
+      // Should NOT have a workflow_completed event
+      const completedEvents = stream.events.filter(
+        (e) => e.event.type === 'workflow_completed',
+      );
+      expect(completedEvents).toHaveLength(0);
+    });
+  });
+
+  describe('with runtimeConfig', () => {
+    it('accepts runtimeConfig in constructor', () => {
+      const rc: RuntimeConfig = { runner: 'cua', model: 'gpt-4o' };
+      const runner = new MockAgentRunner();
+      const stream = new MockStreamManager();
+      const runtime = new WorkflowRuntime(runner, stream, undefined, rc);
+      expect(runtime).toBeDefined();
+    });
+
+    it('accepts undefined runtimeConfig (backward compat)', () => {
+      const runner = new MockAgentRunner();
+      const stream = new MockStreamManager();
+      const runtime = new WorkflowRuntime(runner, stream);
+      expect(runtime).toBeDefined();
     });
   });
 });

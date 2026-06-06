@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.3.0] - 2026-06-06
+
+### Added
+- Anthropic provider support via provider-aware API key resolver
+- Startup recovery: orphan `running` workflows converted to `interrupted`
+- `HOST` and `DYNFLOW_CORS_ORIGINS` environment variables
+- `workflow_failed` SSE event with preserved phase/agent results
+
+### Changed
+- **BREAKING**: `openaiApiKey` renamed to `apiKey` across all runners
+- Server defaults to binding on `127.0.0.1` (was all interfaces)
+- CORS defaults to local Vite addresses only
+- Workflows with phase errors now correctly marked as `failed` (was `completed`)
+
+### Fixed
+- Atomic state transitions prevent duplicate workflow starts
+- Runtime lifecycle cleanup ensures `activeRuntimes` is always cleared
+- Windows light mode documentation accurately reflects no filesystem isolation
+- Docker is correctly documented as optional
+
+### Removed
+- `test:coverage` script (coverage tooling not yet configured)
+
 ## [0.2.0] - 2026-05-31
 
 ### Added

@@ -12,10 +12,23 @@ import orchestrateRouter from './api/orchestrate.js'
 import metaRouter from './api/meta.js'
 import templatesRouter from './api/templates.js'
 import projectsRouter from './api/projects.js'
+import systemRouter from './api/system.js'
 
 export function createApp() {
   const app = express()
-  app.use(cors())
+  const allowedOrigins = process.env.DYNFLOW_CORS_ORIGINS
+    ? process.env.DYNFLOW_CORS_ORIGINS.split(',').map(s => s.trim())
+    : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+  }))
   app.use(express.json({ limit: '10mb' }))
 
   app.get('/api/health', (_req, res) => {
@@ -39,6 +52,7 @@ export function createApp() {
 
   app.use('/api/orchestrate', orchestrateRouter)
   app.use('/api/meta', metaRouter)
+  app.use('/api/system', systemRouter)
 
   return app
 }

@@ -2,11 +2,39 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { getDb, closeDb, withRetry } from './connection.js';
 import { initSchema } from './schema.js';
 import * as repo from './repository.js';
-import type { WorkflowDefinition } from '@dynflow/shared';
+import type { RuntimeConfig, WorkflowDefinition } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function seedSixWorkflows(): void {
+  const db = getDb();
+  const def = JSON.stringify({ name: 'test', phases: [] });
+  const now = new Date().toISOString();
+
+  const insert = db.prepare(`
+    INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // wf-1: completed, 8 days ago, template 'mq'
+  insert.run('wf-1', 'MathQuest v1', 'completed', def, daysAgo(8), now, 'mq');
+  // wf-2: completed, template 'mq'
+  insert.run('wf-2', 'MathQuest v15', 'completed', def, now, now, 'mq');
+  // wf-3: pending
+  insert.run('wf-3', 'Test Workflow', 'pending', def, now, now, null);
+  // wf-4: failed, 30 days ago
+  insert.run('wf-4', 'Failed Job', 'failed', def, daysAgo(30), now, null);
+  // wf-5: completed
+  insert.run('wf-5', 'probe-test', 'completed', def, now, now, null);
+  // wf-6: running, template 'foo'
+  insert.run('wf-6', 'Recent Foo', 'running', def, now, now, 'foo');
+}
 
 function sampleDefinition(): WorkflowDefinition {
   return {
@@ -125,6 +153,93 @@ describe('listWorkflowRuns', () => {
     for (let i = 0; i < 5; i++) {
       expect(allNames).toContain(`Workflow ${i}`);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // T2 — listWorkflowRuns filters (11 new tests: F1–F9 + pagination + injection)
+  // ---------------------------------------------------------------------------
+
+  it('F1 — no filters returns all 6 workflows', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, {});
+    expect(result.total).toBe(6);
+    expect(result.runs).toHaveLength(6);
+  });
+
+  it('F2 — filters by name (LIKE, case-insensitive)', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, { name: 'MathQuest' });
+    expect(result.total).toBe(2);
+    expect(result.runs.map((r) => r.id).sort()).toEqual(['wf-1', 'wf-2']);
+  });
+
+  it('F3 — filters by status', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, { status: 'failed' });
+    expect(result.total).toBe(1);
+    expect(result.runs[0].id).toBe('wf-4');
+  });
+
+  it('F4 — filters by templateId', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, { templateId: 'mq' });
+    expect(result.total).toBe(2);
+    expect(result.runs.map((r) => r.id).sort()).toEqual(['wf-1', 'wf-2']);
+  });
+
+  it('F5 — filters by sinceDays (last 7 days)', () => {
+    seedSixWorkflows();
+    // Excludes wf-1 (8 days old) and wf-4 (30 days old)
+    const result = repo.listWorkflowRuns(1, 10, { sinceDays: 7 });
+    expect(result.total).toBe(4);
+  });
+
+  it('F6 — combines name + status + sinceDays filters', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, {
+      name: 'MathQuest',
+      status: 'completed',
+      sinceDays: 1,
+    });
+    // Only wf-2 matches: name=MathQuest, status=completed, created "today"
+    // wf-1 has same name+status but is 8 days old, so sinceDays:1 excludes it
+    expect(result.total).toBe(1);
+    expect(result.runs[0].id).toBe('wf-2');
+  });
+
+  it('F7 — pagination with filters (page 2, size 2)', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(2, 2, {});
+    expect(result.runs).toHaveLength(2);
+    expect(result.total).toBe(6);
+  });
+
+  it('F9 — SQL injection attempt does not crash', () => {
+    seedSixWorkflows();
+    const result = repo.listWorkflowRuns(1, 10, {
+      name: "'; DROP TABLE workflow_runs; --",
+    });
+    expect(result.total).toBe(0);
+    // Verify table still exists
+    const db = getDb();
+    const check = db.prepare('SELECT COUNT(*) as count FROM workflow_runs').get() as { count: number };
+    expect(check.count).toBe(6);
+  });
+});
+
+describe('createWorkflowRun — script storage', () => {
+  it('F8 — stores and retrieves script', () => {
+    const script = 'workflow("test", () => { phase("p1", () => { agent("a1", "do stuff"); }); });';
+    const run = repo.createWorkflowRun(
+      sampleDefinition(),
+      'Scripted',
+      { script },
+    );
+    expect(run.script).toBe(script);
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched).toBeDefined();
+    expect(fetched!.script).toBe(script);
   });
 });
 
@@ -701,5 +816,190 @@ describe('createWorkflowRun — template link', () => {
     });
     expect(run.templateId).toBe('tpl-abc');
     expect(run.templateVersion).toBeUndefined();
+  });
+});
+
+describe('createWorkflowRun — runtime config', () => {
+  it('stores and retrieves runtimeConfig', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const rc: RuntimeConfig = { runner: 'cua', llmProvider: 'opencode', model: 'gpt-4o' };
+    const run = repo.createWorkflowRun(def, 'With Config', { runtimeConfig: rc });
+    expect(run.runtimeConfig).toEqual(rc);
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched).toBeDefined();
+    expect(fetched!.runtimeConfig).toEqual(rc);
+  });
+
+  it('stores null runtime_config_json when not provided', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'No Config');
+    expect(run.runtimeConfig).toBeUndefined();
+  });
+
+  it('stores partial runtimeConfig', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const rc: RuntimeConfig = { runner: 'pi-direct' };
+    const run = repo.createWorkflowRun(def, 'Partial Config', { runtimeConfig: rc });
+    expect(run.runtimeConfig?.runner).toBe('pi-direct');
+    expect(run.runtimeConfig?.llmProvider).toBeUndefined();
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.runtimeConfig?.runner).toBe('pi-direct');
+  });
+});
+
+describe('getWorkflowRun — definition parsed', () => {
+  it('returns parsed definition from definition_json', () => {
+    const def: WorkflowDefinition = { name: 'test-flow', phases: [{ name: 'p1', agents: [{ name: 'a1', prompt: 'do' }] }] };
+    const run = repo.createWorkflowRun(def, 'Test Def');
+    expect(run.definition).toBeDefined();
+    expect(run.definition!.name).toBe('test-flow');
+    expect(run.definition!.phases).toHaveLength(1);
+  });
+
+  it('handles malformed definition_json gracefully', () => {
+    const db = getDb();
+    db.prepare(`INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run('bad-def', 'Bad', 'pending', '{invalid json}', '2024-01-01', '2024-01-01');
+
+    const fetched = repo.getWorkflowRun('bad-def');
+    expect(fetched).toBeDefined();
+    expect(fetched!.definition).toBeUndefined();
+  });
+});
+
+describe('updateWorkflowRun', () => {
+  it('updates runtimeConfig', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test');
+    expect(run.runtimeConfig).toBeUndefined();
+
+    const rc: RuntimeConfig = { runner: 'cua', model: 'gpt-4o' };
+    repo.updateWorkflowRun(run.id, { runtimeConfig: rc });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.runtimeConfig).toEqual(rc);
+  });
+
+  it('clears runtimeConfig to null', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test', { runtimeConfig: { runner: 'cua' } });
+    expect(run.runtimeConfig).toBeDefined();
+
+    repo.updateWorkflowRun(run.id, { runtimeConfig: null as unknown as RuntimeConfig });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.runtimeConfig).toBeUndefined();
+  });
+
+  it('updates status', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test');
+
+    repo.updateWorkflowRun(run.id, { status: 'running' });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched!.status).toBe('running');
+  });
+
+  it('ignores unknown fields', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    const run = repo.createWorkflowRun(def, 'Test');
+
+    // @ts-expect-error — testing unknown field
+    repo.updateWorkflowRun(run.id, { nonExistent: 'value' });
+
+    const fetched = repo.getWorkflowRun(run.id);
+    expect(fetched).toBeDefined();
+  });
+});
+
+describe('transitionWorkflowStatus', () => {
+  it('transitions from pending to running', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+
+    const result = repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+
+    expect(result).toBe(true);
+    const updated = repo.getWorkflowRun(run.id)!;
+    expect(updated.status).toBe('running');
+    expect(updated.updatedAt).not.toBe(run.updatedAt);
+  });
+
+  it('returns false when current status does not match expected', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+    repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+
+    // Try again from 'pending' — but the row is already 'running'
+    const result = repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+
+    expect(result).toBe(false);
+    const updated = repo.getWorkflowRun(run.id)!;
+    expect(updated.status).toBe('running');
+  });
+
+  it('returns false for a non-existent ID', () => {
+    const result = repo.transitionWorkflowStatus('non-existent', 'pending', 'running');
+
+    expect(result).toBe(false);
+  });
+
+  it('supports running -> paused -> running round-trip', () => {
+    const run = repo.createWorkflowRun(sampleDefinition(), 'Test');
+
+    expect(repo.transitionWorkflowStatus(run.id, 'pending', 'running')).toBe(true);
+    expect(repo.transitionWorkflowStatus(run.id, 'running', 'paused')).toBe(true);
+    expect(repo.transitionWorkflowStatus(run.id, 'paused', 'running')).toBe(true);
+
+    const updated = repo.getWorkflowRun(run.id)!;
+    expect(updated.status).toBe('running');
+  });
+});
+
+describe('markOrphanRunsAsInterrupted', () => {
+  it('converts orphan running workflows to interrupted', () => {
+    const db = getDb();
+    const def = JSON.stringify({ name: 'test', phases: [] });
+    const now = new Date().toISOString();
+
+    // Insert two running workflows and one completed workflow
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('orphan-1', 'Orphan 1', 'running', def, now, now);
+
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('orphan-2', 'Orphan 2', 'running', def, now, now);
+
+    db.prepare(
+      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('completed-1', 'Completed', 'completed', def, now, now);
+
+    const count = repo.markOrphanRunsAsInterrupted();
+
+    expect(count).toBe(2);
+
+    const orphan1 = repo.getWorkflowRun('orphan-1')!;
+    expect(orphan1.status).toBe('interrupted');
+
+    const orphan2 = repo.getWorkflowRun('orphan-2')!;
+    expect(orphan2.status).toBe('interrupted');
+
+    // Non-running workflows must be left untouched
+    const completed = repo.getWorkflowRun('completed-1')!;
+    expect(completed.status).toBe('completed');
+  });
+
+  it('returns 0 when no orphan running workflows exist', () => {
+    const def: WorkflowDefinition = { name: 'test', phases: [] };
+    repo.createWorkflowRun(def, 'Pending Run');
+
+    const count = repo.markOrphanRunsAsInterrupted();
+
+    expect(count).toBe(0);
   });
 });

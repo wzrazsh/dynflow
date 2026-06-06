@@ -3,6 +3,7 @@ import type { WorkflowTemplate, ApiResponse, CreateTemplateRequest, UpdateTempla
 import { validateWorkflowDefinition } from '@dynflow/shared';
 import * as templateRepo from '../db/template-repository.js';
 import * as repo from '../db/repository.js';
+import { getDb } from '../db/connection.js';
 import { executeScript } from '../sandbox/isolated-runtime.js';
 
 const router = Router();
@@ -132,6 +133,21 @@ router.post('/import', (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }
+});
+
+// GET /used-in-workflows — Templates sorted by how many workflow runs reference each
+router.get('/used-in-workflows', (_req, res) => {
+  const rows = getDb()
+    .prepare(
+      `SELECT t.id, t.name, t.description, COUNT(w.id) as workflowCount
+       FROM workflow_templates t
+       INNER JOIN workflow_runs w ON w.template_id = t.id
+       WHERE t.deleted_at IS NULL
+       GROUP BY t.id, t.name, t.description
+       ORDER BY workflowCount DESC, t.name ASC`,
+    )
+    .all();
+  res.json({ success: true, data: rows });
 });
 
 // GET /:id — Get template by ID

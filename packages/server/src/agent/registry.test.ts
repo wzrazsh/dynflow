@@ -593,7 +593,7 @@ describe('importFromJSON', () => {
             name: 'Bad Source',
             url: 'https://x',
             description: 'No parent ref',
-          } as any,
+          },
         ],
       }),
     ).toThrow(/requires a valid domainId or domainName/i);
@@ -632,7 +632,7 @@ describe('importFromJSON', () => {
 
 describe('hierarchical queries', () => {
   it('41 — full tree walk from domains to agents', () => {
-    const { domain, source, agent } = seedMinimal();
+    const { domain, agent } = seedMinimal();
 
     // Walk down
     const sources = registry.getSourcesByDomain(domain.id);

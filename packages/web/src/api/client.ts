@@ -27,8 +27,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
-export function get<T>(url: string): Promise<T> {
-  return request<T>(url);
+export function get<T>(url: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(url, signal ? { signal } : undefined);
 }
 
 export function post<T>(url: string, body: unknown): Promise<T> {

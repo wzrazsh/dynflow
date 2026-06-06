@@ -2,7 +2,6 @@ import { Router } from 'express';
 import type { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { ProjectService } from '../project/project-service.js';
 import type { ProjectMeta, VersionMeta } from '../project/types.js';
 import {

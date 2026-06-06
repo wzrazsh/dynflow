@@ -1,12 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { WorkflowRun } from '@dynflow/shared';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import type { WorkflowRun, SystemInfo, RuntimeConfig } from '@dynflow/shared';
 import { fetchWorkflow, controlWorkflow } from '../api/workflows';
+import { fetchSystemInfo } from '../api/system';
 import { useSSE } from '../hooks/useSSE';
 import StatusBadge from './StatusBadge';
+import RuntimeConfigChips from './RuntimeConfigChips';
+import StartRunDialog from './StartRunDialog';
 
 interface WorkflowDetailProps {
   workflowId: string;
-  onBack: () => void;
+  onBack?: () => void;
   /**
    * Optional callback fired when the user clicks the "Source: template v<n>"
    * pill on a workflow run that was created from a template. The parent
@@ -29,6 +32,8 @@ export default function WorkflowDetail({
   const [error, setError] = useState<string | null>(null);
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [startDialogOpen, setStartDialogOpen] = useState(false);
 
   const loadWorkflow = useCallback(async () => {
     try {
@@ -46,7 +51,7 @@ export default function WorkflowDetail({
     }
   }, [workflowId]);
 
-  // SSE live updates — only subscribe when the workflow is active
+  // SSE live updates 鈥?only subscribe when the workflow is active
   const workflowForSSE = workflow && (workflow.status === 'running' || workflow.status === 'paused') ? workflowId : null;
   const { events, status: sseStatus } = useSSE(workflowForSSE);
   const prevEventCountRef = useRef(0);
@@ -58,6 +63,15 @@ export default function WorkflowDetail({
       loadWorkflow();
     }
   }, [events.length, loadWorkflow]);
+
+  // Fetch system info on mount
+  useEffect(() => {
+    fetchSystemInfo()
+      .then(res => {
+        if (res.success && res.data) setSystemInfo(res.data);
+      })
+      .catch(() => {});
+  }, []);
 
   // Initial load
   useEffect(() => {
@@ -76,6 +90,12 @@ export default function WorkflowDetail({
   async function handleControl(action: 'start' | 'pause' | 'resume' | 'stop') {
     setActionLoading(action);
     try {
+      if (action === 'start') {
+        // Open dialog instead of directly starting
+        setStartDialogOpen(true);
+        setActionLoading(null);
+        return;
+      }
       await controlWorkflow(workflowId, action);
       await loadWorkflow();
     } catch (err) {
@@ -84,6 +104,11 @@ export default function WorkflowDetail({
       setActionLoading(null);
     }
   }
+
+  const handleStartConfirm = useCallback(async (config: RuntimeConfig) => {
+    await controlWorkflow(workflowId, 'start', { runtimeConfig: config });
+    await loadWorkflow();
+  }, [workflowId, loadWorkflow]);
 
   function togglePhase(phaseId: string) {
     setExpandedPhases((prev) => {
@@ -117,20 +142,22 @@ export default function WorkflowDetail({
   if (error) {
     return (
       <div>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#3b82f6',
-            cursor: 'pointer',
-            padding: 0,
-            marginBottom: 16,
-            fontSize: '0.875rem',
-          }}
-        >
-          &larr; Back to list
-        </button>
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#3b82f6',
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: 16,
+              fontSize: '0.875rem',
+            }}
+          >
+            &larr; Back to list
+          </button>
+        )}
         <div
           style={{
             padding: '8px 12px',
@@ -155,22 +182,31 @@ export default function WorkflowDetail({
   const isPending = workflow.status === 'pending';
   const isTerminal = ['completed', 'failed', 'stopped'].includes(workflow.status);
 
+  // Resolve runtime config: run override wins, then definition default
+  const resolvedRuntimeConfig: RuntimeConfig | undefined =
+    workflow?.runtimeConfig ?? workflow?.definition?.runtimeConfig;
+  const hasRuntimeConfig = !!resolvedRuntimeConfig?.runner || !!resolvedRuntimeConfig?.llmProvider || !!resolvedRuntimeConfig?.model;
+  const chipsSource = workflow?.runtimeConfig ? 'override' : 'resolved';
+
   return (
-    <div>
-      <button
-        onClick={onBack}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#3b82f6',
-          cursor: 'pointer',
-          padding: 0,
-          marginBottom: 16,
-          fontSize: '0.875rem',
-        }}
-      >
-        &larr; Back to list
-      </button>
+    <>
+      <div>
+        {onBack && (
+          <button
+            onClick={onBack}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#3b82f6',
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: 16,
+              fontSize: '0.875rem',
+            }}
+          >
+            &larr; Back to list
+          </button>
+        )}
 
       <div
         style={{
@@ -215,7 +251,7 @@ export default function WorkflowDetail({
               marginLeft: 4,
             }}
           >
-            {sseStatus.connected ? '● Live' : sseStatus.reconnecting ? '⟳ Reconnecting...' : ''}
+            {sseStatus.connected ? '鈼?Live' : sseStatus.reconnecting ? '鉄?Reconnecting...' : ''}
           </span>
         )}
       </div>
@@ -224,13 +260,25 @@ export default function WorkflowDetail({
         Created: {formatTime(workflow.createdAt)}
       </p>
 
+      {/* Runtime config chips */}
+      {hasRuntimeConfig && (
+        <div style={{ marginTop: 12, marginBottom: 12 }}>
+          <RuntimeConfigChips
+            runner={resolvedRuntimeConfig?.runner}
+            llmProvider={resolvedRuntimeConfig?.llmProvider}
+            model={resolvedRuntimeConfig?.model}
+            source={chipsSource}
+          />
+        </div>
+      )}
+
       {/* Control buttons */}
       {!isTerminal && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           {isPending && (
             <ControlButton
               label="Start"
-              action="start"
+
               onClick={() => handleControl('start')}
               loading={actionLoading === 'start'}
               color="#059669"
@@ -240,14 +288,14 @@ export default function WorkflowDetail({
             <>
               <ControlButton
                 label="Pause"
-                action="pause"
+
                 onClick={() => handleControl('pause')}
                 loading={actionLoading === 'pause'}
                 color="#d97706"
               />
               <ControlButton
                 label="Stop"
-                action="stop"
+
                 onClick={() => handleControl('stop')}
                 loading={actionLoading === 'stop'}
                 color="#dc2626"
@@ -258,14 +306,14 @@ export default function WorkflowDetail({
             <>
               <ControlButton
                 label="Resume"
-                action="resume"
+
                 onClick={() => handleControl('resume')}
                 loading={actionLoading === 'resume'}
                 color="#059669"
               />
               <ControlButton
                 label="Stop"
-                action="stop"
+
                 onClick={() => handleControl('stop')}
                 loading={actionLoading === 'stop'}
                 color="#dc2626"
@@ -370,6 +418,57 @@ export default function WorkflowDetail({
                           {agent.name}
                         </span>
                         <StatusBadge status={agent.status} />
+                        {(agent.noVncUrl || agent.cuaApiUrl) && (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              marginLeft: 'auto',
+                              fontSize: '0.6875rem',
+                              color: '#6b7280',
+                            }}
+                          >
+                            {agent.noVncUrl && (
+                              <a
+                                href={agent.noVncUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#1d4ed8',
+                                  textDecoration: 'none',
+                                  border: '1px solid #bfdbfe',
+                                  backgroundColor: '#eff6ff',
+                                  borderRadius: 10,
+                                  padding: '1px 8px',
+                                  fontWeight: 600,
+                                }}
+                                title={`Open Cua desktop: ${agent.noVncUrl}`}
+                              >
+                                馃枼锔?Cua Desktop
+                              </a>
+                            )}
+                            {agent.cuaApiUrl && (
+                              <a
+                                href={agent.cuaApiUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#6b7280',
+                                  textDecoration: 'none',
+                                  border: '1px solid #e5e7eb',
+                                  backgroundColor: '#f9fafb',
+                                  borderRadius: 10,
+                                  padding: '1px 8px',
+                                  fontWeight: 600,
+                                }}
+                                title={`Cua computer-server API: ${agent.cuaApiUrl}`}
+                              >
+                                Cua API
+                              </a>
+                            )}
+                          </span>
+                        )}
                       </div>
 
                       <p
@@ -442,20 +541,28 @@ export default function WorkflowDetail({
           );
         })}
       </div>
-    </div>
+      </div>
+
+    <StartRunDialog
+      open={startDialogOpen}
+      onClose={() => setStartDialogOpen(false)}
+      onConfirm={handleStartConfirm}
+      defaultRuntimeConfig={workflow?.definition?.runtimeConfig}
+      systemInfo={systemInfo}
+      workflowName={workflow?.name ?? ''}
+    />
+    </>
   );
 }
 
 // Small helper component for control buttons
 function ControlButton({
   label,
-  action,
   onClick,
   loading,
   color,
 }: {
   label: string;
-  action: string;
   onClick: () => void;
   loading: boolean;
   color: string;

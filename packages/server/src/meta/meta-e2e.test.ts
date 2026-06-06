@@ -8,10 +8,28 @@
  * network failure, and cleanup verification.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+
+// Mock child_process so git clone never hits the network.
+// Tests 18, 20, and 22 call scanProject with valid GitHub URLs that would
+// otherwise attempt a real git clone. This mock makes execFile call back
+// with an ENOTFOUND error, simulating a network-unavailable scenario.
+vi.mock('node:child_process', () => ({
+  execFile: (
+    _cmd: string,
+    _args: string[],
+    _opts: unknown,
+    callback: (err: Error | null) => void,
+  ) => {
+    const error = new Error('mock: network unavailable (ENOTFOUND)') as NodeJS.ErrnoException;
+    error.code = 'ENOTFOUND';
+    callback(error);
+  },
+}));
+
 import { closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import {
@@ -32,8 +50,7 @@ import {
   deleteDomain,
 } from '../db/repository.js';
 import type { ScanOptions } from './scanner.js';
-import type { ScannedFile } from './extractor.js';
-import type { SkillCategory, SkillParameter } from '@dynflow/shared';
+
 
 // ---------------------------------------------------------------------------
 // Helpers

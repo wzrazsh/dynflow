@@ -1,7 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, withRetry } from './connection.js';
+import { RuntimeConfigSchema } from '@dynflow/shared';
 import type {
   WorkflowDefinition,
+  WorkflowListFilters,
   WorkflowRun,
   PhaseRun,
   AgentRun,
@@ -16,6 +18,7 @@ import type {
   PredefinedAgent,
   Skill,
   SkillParameter,
+  RuntimeConfig,
 } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
@@ -35,7 +38,12 @@ import type {
 export function createWorkflowRun(
   definition: WorkflowDefinition,
   name: string,
-  opts?: { templateId?: string; templateVersion?: number },
+  opts?: {
+    templateId?: string;
+    templateVersion?: number;
+    script?: string;
+    runtimeConfig?: RuntimeConfig;
+  },
 ): WorkflowRun {
   const db = getDb();
   const id = uuidv4();
@@ -43,8 +51,13 @@ export function createWorkflowRun(
 
   withRetry(() =>
     db.prepare(
-      `INSERT INTO workflow_runs (id, name, status, definition_json, created_at, updated_at, template_id, template_version)
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)`,
+      `INSERT INTO workflow_runs (
+         id, name, status, definition_json, created_at, updated_at,
+         template_id, template_version,
+         workspace_path, workspace_git_url, workspace_branch,
+         script, runtime_config_json
+       )
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       name,
@@ -53,6 +66,11 @@ export function createWorkflowRun(
       now,
       opts?.templateId ?? null,
       opts?.templateVersion ?? null,
+      definition.workspace?.path ?? null,
+      definition.workspace?.git ?? null,
+      definition.workspace?.branch ?? null,
+      opts?.script ?? null,
+      opts?.runtimeConfig ? JSON.stringify(opts.runtimeConfig) : null,
     ),
   );
 
@@ -112,6 +130,12 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
       workflow.template_version === null || workflow.template_version === undefined
         ? undefined
         : (workflow.template_version as number),
+    workspacePath: (workflow.workspace_path as string | null) ?? undefined,
+    workspaceGitUrl: (workflow.workspace_git_url as string | null) ?? undefined,
+    workspaceBranch: (workflow.workspace_branch as string | null) ?? undefined,
+    script: (workflow.script as string | null) ?? undefined,
+    runtimeConfig: parseRuntimeConfig(workflow.runtime_config_json),
+    definition: parseDefinition(workflow.definition_json),
   };
 }
 
@@ -122,13 +146,36 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
 export function listWorkflowRuns(
   page: number,
   pageSize: number,
+  filters: WorkflowListFilters = {},
 ): { runs: WorkflowRun[]; total: number } {
   const db = getDb();
 
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filters.name) {
+    conditions.push('name LIKE ?');
+    params.push(`%${filters.name}%`);
+  }
+  if (filters.status) {
+    conditions.push('status = ?');
+    params.push(filters.status);
+  }
+  if (filters.templateId) {
+    conditions.push('template_id = ?');
+    params.push(filters.templateId);
+  }
+  if (filters.sinceDays !== undefined) {
+    conditions.push('julianday(created_at) >= julianday(\'now\', ?)');
+    params.push(`-${filters.sinceDays} days`);
+  }
+
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+
   const countRow = withRetry(() =>
     db
-      .prepare('SELECT COUNT(*) as count FROM workflow_runs')
-      .get(),
+      .prepare(`SELECT COUNT(*) as count FROM workflow_runs${whereClause}`)
+      .get(...params),
   ) as { count: number };
   const total = countRow.count;
 
@@ -136,9 +183,9 @@ export function listWorkflowRuns(
   const rows = withRetry(() =>
     db
       .prepare(
-        'SELECT id FROM workflow_runs ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        `SELECT id FROM workflow_runs${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       )
-      .all(pageSize, offset),
+      .all(...params, pageSize, offset),
   ) as { id: string }[];
 
   const runs = rows.map((row) => getWorkflowRun(row.id)!);
@@ -159,6 +206,90 @@ export function updateWorkflowStatus(
     db.prepare(
       'UPDATE workflow_runs SET status = ?, updated_at = ? WHERE id = ?',
     ).run(status, now, id),
+  );
+}
+
+/**
+ * Atomically transition a workflow run from one status to another.
+ * The UPDATE only affects the row if the current status matches `from`,
+ * preventing race conditions when two callers try to transition the same
+ * run simultaneously.
+ *
+ * @returns `true` if exactly one row was updated, `false` otherwise.
+ */
+export function transitionWorkflowStatus(
+  id: string,
+  from: WorkflowStatus,
+  to: WorkflowStatus,
+): boolean {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = withRetry(() =>
+    db
+      .prepare(
+        'UPDATE workflow_runs SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
+      )
+      .run(to, now, id, from),
+  );
+  return result.changes === 1;
+}
+
+/**
+ * Convert all workflow runs stuck in `running` status to `interrupted`.
+ * This handles the case where the server crashed or was restarted while
+ * workflows were actively running — they cannot resume, so they are marked
+ * as interrupted.
+ *
+ * @returns The number of workflow runs that were updated.
+ */
+export function markOrphanRunsAsInterrupted(): number {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = withRetry(() =>
+    db
+      .prepare(
+        "UPDATE workflow_runs SET status = 'interrupted', updated_at = ? WHERE status = 'running'",
+      )
+      .run(now),
+  );
+  return result.changes;
+}
+
+/**
+ * Update a workflow run's mutable fields.
+ * Uses a whitelist approach — only known fields can be updated.
+ * For runtimeConfig: serializes to JSON; if null/undefined, stores NULL.
+ */
+export function updateWorkflowRun(
+  id: string,
+  partial: Partial<Pick<WorkflowRun, 'name' | 'status' | 'runtimeConfig'>>,
+): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const setClauses: string[] = ['updated_at = ?'];
+  const values: unknown[] = [now];
+
+  if (partial.name !== undefined) {
+    setClauses.push('name = ?');
+    values.push(partial.name);
+  }
+  if (partial.status !== undefined) {
+    setClauses.push('status = ?');
+    values.push(partial.status);
+  }
+  if (partial.runtimeConfig !== undefined) {
+    setClauses.push('runtime_config_json = ?');
+    values.push(
+      partial.runtimeConfig === null || partial.runtimeConfig === undefined
+        ? null
+        : JSON.stringify(partial.runtimeConfig),
+    );
+  }
+
+  values.push(id);
+  withRetry(() =>
+    db.prepare(`UPDATE workflow_runs SET ${setClauses.join(', ')} WHERE id = ?`).run(...values),
   );
 }
 
@@ -191,8 +322,8 @@ export function getOrCreatePhases(
   );
 
   const insertAgent = db.prepare(
-    `INSERT INTO agent_runs (id, phase_run_id, name, status, prompt, model, output, error, started_at, completed_at, docker_container_id)
-     VALUES (?, ?, ?, 'pending', ?, 'gpt-4o', NULL, NULL, NULL, NULL, NULL)`,
+    `INSERT INTO agent_runs (id, phase_run_id, name, status, prompt, model, output, error, started_at, completed_at, docker_container_id, no_vnc_url, cua_api_url)
+     VALUES (?, ?, ?, 'pending', ?, 'gpt-4o', NULL, NULL, NULL, NULL, NULL, NULL, NULL)`,
   );
 
   return phases.map((phaseDef, index) => {
@@ -284,6 +415,8 @@ export function updateAgentStatus(
     output?: string;
     error?: string;
     containerId?: string;
+    noVncUrl?: string;
+    cuaApiUrl?: string;
     files?: string[];
     fileCount?: number;
     totalSize?: number;
@@ -338,6 +471,14 @@ export function updateAgentStatus(
   if (opts?.containerId !== undefined) {
     setClauses.push('docker_container_id = ?');
     values.push(opts.containerId);
+  }
+  if (opts?.noVncUrl !== undefined) {
+    setClauses.push('no_vnc_url = ?');
+    values.push(opts.noVncUrl);
+  }
+  if (opts?.cuaApiUrl !== undefined) {
+    setClauses.push('cua_api_url = ?');
+    values.push(opts.cuaApiUrl);
   }
 
   values.push(id);
@@ -402,6 +543,8 @@ function rowToAgentRun(row: Record<string, unknown>): AgentRun {
     error: (row.error as string) ?? undefined,
     startedAt: (row.started_at as string) ?? undefined,
     completedAt: (row.completed_at as string) ?? undefined,
+    noVncUrl: (row.no_vnc_url as string | null) ?? undefined,
+    cuaApiUrl: (row.cua_api_url as string | null) ?? undefined,
   };
 }
 
@@ -988,4 +1131,43 @@ export function removeAgentSkill(agentId: string, skillId: string): void {
       )
       .run(agentId, skillId),
   );
+}
+
+// ---------------------------------------------------------------------------
+// JSON parsing helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse `runtime_config_json` from the database into a RuntimeConfig object.
+ * Returns undefined if the column is NULL, empty, or contains invalid JSON
+ * that doesn't match the RuntimeConfigSchema.
+ */
+function parseRuntimeConfig(raw: unknown): RuntimeConfig | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    const result = RuntimeConfigSchema.safeParse(parsed);
+    return result.success ? result.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Parse `definition_json` from the database into a WorkflowDefinition object.
+ * Uses basic structural validation (must have `name` and `phases` array).
+ * Returns undefined if the column is NULL, empty, or contains invalid JSON.
+ */
+function parseDefinition(raw: unknown): WorkflowDefinition | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  try {
+    const parsed = JSON.parse(raw) as WorkflowDefinition;
+    // Basic structural validation: must have name and phases
+    if (typeof parsed !== 'object' || !parsed || !parsed.name || !Array.isArray(parsed.phases)) {
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
 }

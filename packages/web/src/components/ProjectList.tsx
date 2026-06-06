@@ -4,11 +4,9 @@ import type { ProjectMeta } from '@dynflow/shared';
 
 export default function ProjectList({
   onSelect,
-  onNewProject,
   onError,
 }: {
   onSelect: (name: string) => void;
-  onNewProject?: () => void;
   onError?: (message: string) => void;
 }) {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);

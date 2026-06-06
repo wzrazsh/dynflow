@@ -1,20 +1,24 @@
 {
   "name": "@dynflow/server",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:sandbox:windows": "cd ../.. && npx vitest run packages/server/src/runner/sandbox packages/server/src/runner/integration"
   },
   "dependencies": {
     "@dynflow/shared": "*",
+    "@earendil-works/pi-agent-core": "^0.78.0",
+    "@trycua/computer": "^0.1.6",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "isolated-vm": "^6.1.2",
+    "koffi": "^3.0.2",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

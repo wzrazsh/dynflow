@@ -1,0 +1,30 @@
+# DynFlow Cua + Pi Layer
+# Adds Pi coding agent on top of dynflow-cua-base.
+# This is the "CuaAgentRunner"-compatible image.
+
+FROM dynflow-cua-base:latest
+
+USER root
+
+# Install Node.js 22.x (LTS) for Pi
+RUN apt-get update && apt-get install -y ca-certificates curl gnupg && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Pi (coding agent) globally
+RUN npm install -g @earendil-works/pi-coding-agent@^0.78.0
+
+# Make Pi's working directory match the workspace mount (set by CuaAgentRunner).
+ENV PI_CWD=/home/cua/workspace
+ENV HOME=/home/cua
+
+USER cua
+
+# Re-declare the entrypoint from base (supervisord brings up desktop + computer-server + noVNC).
+# Pi is NOT started here — DynFlow CuaAgentRunner triggers Pi on demand via `docker exec`.
+LABEL org.dynflow.component="cua-agent"
+LABEL org.dynflow.version="0.1.0"

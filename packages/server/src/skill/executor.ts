@@ -1,4 +1,4 @@
-import { getSkillsBySource, getSkills } from './registry.js';
+import { getSkillsBySource } from './registry.js';
 import { getSkill } from '../db/repository.js';
 import type { Skill, SkillCategory } from '@dynflow/shared';
 
@@ -204,7 +204,7 @@ export class SkillExecutor {
    */
   private async executeDevelopment(
     skill: Skill,
-    input: Record<string, unknown>,
+    _input: Record<string, unknown>,
   ): Promise<unknown> {
     return {
       message: 'Development skill executed (placeholder)',
@@ -218,7 +218,7 @@ export class SkillExecutor {
    */
   private async executeCommunication(
     skill: Skill,
-    input: Record<string, unknown>,
+    _input: Record<string, unknown>,
   ): Promise<unknown> {
     return {
       message: 'Communication skill executed (placeholder)',
@@ -232,7 +232,7 @@ export class SkillExecutor {
    */
   private async executeAutomation(
     skill: Skill,
-    input: Record<string, unknown>,
+    _input: Record<string, unknown>,
   ): Promise<unknown> {
     return {
       message: 'Automation skill executed (placeholder)',
@@ -246,7 +246,7 @@ export class SkillExecutor {
    */
   private async executeCreative(
     skill: Skill,
-    input: Record<string, unknown>,
+    _input: Record<string, unknown>,
   ): Promise<unknown> {
     return {
       message: 'Creative skill executed (placeholder)',

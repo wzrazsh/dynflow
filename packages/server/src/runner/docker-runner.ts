@@ -33,8 +33,8 @@ export class DockerAgentRunner implements AgentRunner {
       };
     }
     let volumeArg = '';
-    if (config.outputDir) {
-      volumeArg = `--volume "${config.outputDir}:/app/output" `;
+    if (config.workspacePath) {
+      volumeArg = `--volume "${config.workspacePath}:/app/output" `;
     }
     const runCmd =
       `docker run --rm -d --memory=512m --cpus=1 --stop-timeout=10 --label dynflow=true ` +
@@ -42,7 +42,7 @@ export class DockerAgentRunner implements AgentRunner {
       `-e AGENT_PROMPT="${config.prompt.replace(/"/g, '\\"')}" ` +
       `-e AGENT_MODEL="${config.model}" ` +
       `-e AGENT_TIMEOUT_MS="${config.timeoutMs}" ` +
-      `-e OPENAI_API_KEY="${config.openaiApiKey}" ` +
+      `-e OPENAI_API_KEY="${config.apiKey}" ` +
       `${this.image}`;
     const { stdout: containerId } = await execAsync(runCmd);
     const cid = containerId.trim();

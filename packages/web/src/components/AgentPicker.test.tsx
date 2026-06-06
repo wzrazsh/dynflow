@@ -253,7 +253,7 @@ describe('AgentPicker', () => {
   });
 
   it('displays selected count in the chips section', async () => {
-    const user = userEvent.setup();
+    userEvent.setup();
     vi.mocked(fetchAgentSources).mockResolvedValue({ success: true, data: mockSources });
     vi.mocked(fetchRoles).mockResolvedValue({ success: true, data: mockRoles });
     vi.mocked(fetchAgentsByRole).mockResolvedValue({ success: true, data: mockAgents });
@@ -451,7 +451,7 @@ describe('AgentPicker', () => {
   // ── Custom maxSelections ───────────────────────────────────
 
   it('respects custom maxSelections prop', async () => {
-    const user = userEvent.setup();
+    userEvent.setup();
     vi.mocked(fetchAgentSources).mockResolvedValue({ success: true, data: mockSources });
     vi.mocked(fetchRoles).mockResolvedValue({ success: true, data: mockRoles });
     vi.mocked(fetchAgentsByRole).mockResolvedValue({ success: true, data: mockAgents });

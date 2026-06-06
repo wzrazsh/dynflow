@@ -22,12 +22,23 @@ export function createWorkflowCompletedEvent(workflowId: string): SSEEvent {
 
 export function createWorkflowFailedEvent(
   workflowId: string,
-  error: string,
+  payload: {
+    phases: { name: string; status: string }[];
+    agentResults: {
+      agentId: string;
+      agentName: string;
+      phaseName: string;
+      status: string;
+      output?: string;
+      error?: string;
+    }[];
+    error?: string;
+  },
 ): SSEEvent {
   return {
     type: 'workflow_failed',
     workflowId,
-    data: { error },
+    data: payload,
     timestamp: ts(),
   };
 }

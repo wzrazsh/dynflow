@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -9,25 +9,18 @@ dotenv.config({ path: join(__dirname, '../../../.env') });
 
 import { createApp, errorHandler } from './app.js'
 import { isDockerAvailable, cleanupContainers } from './runner/index.js';
-import { initSchema } from './db/schema.js';
-import { runMigrations, getMigrationStatus } from './db/migrations.js';
+import { initializeDatabase } from './bootstrap/initialize.js';
 import { logger } from './logger.js';
 
-const port = process.env.PORT || 3001
+const port = Number(process.env.PORT) || 3001
+const host = process.env.HOST || '127.0.0.1'
 const app = createApp()
 
 // ---------------------------------------------------------------------------
-// Initialize database tables & run pending migrations
+// Initialize database tables, run migrations & recover orphan workflows
 // ---------------------------------------------------------------------------
 
-initSchema();
-logger.info('Database tables initialized');
-
-runMigrations();
-const statuses = getMigrationStatus();
-const applied = statuses.filter((s) => s.applied).length;
-const pending = statuses.filter((s) => !s.applied).length;
-logger.info(`Migrations: ${applied} applied, ${pending} pending`);
+initializeDatabase();
 
 // ---------------------------------------------------------------------------
 // Startup checks & cleanup
@@ -51,11 +44,11 @@ if (isDockerAvailable()) {
 // Start server
 // ---------------------------------------------------------------------------
 
-// Global error handler — must be registered AFTER all routes
+// Global error handler 鈥?must be registered AFTER all routes
 app.use(errorHandler);
 
-const server = app.listen(port, () => {
-  logger.info(`DynFlow server listening on port ${port}`)
+const server = app.listen(port, host, () => {
+  logger.info(`DynFlow server listening on ${host}:${port}`)
 });
 
 // ---------------------------------------------------------------------------

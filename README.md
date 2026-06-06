@@ -24,8 +24,12 @@ maintainer automation, workflow templates, and local-first orchestration.
 - Sequential phase execution with parallel agents inside each phase.
 - Pause, resume, stop, fail, and restart-aware workflow states.
 - SQLite persistence with WAL mode.
-- Docker-isolated agent execution.
-- OpenAI-compatible agent runner with configurable base URL and model.
+- Cua-sandboxed Pi agent: each workflow run gets a per-workflow shared
+  workspace (git-cloned or local path) mounted into a Cua Linux desktop
+  container; Pi runs as a CLI process inside the container and exchanges
+  JSONL events with the DynFlow server.
+- OpenAI-compatible legacy Docker agent runner is still available behind
+  `DYNFLOW_RUNNER=docker` for fallback.
 - Real-time workflow events over SSE.
 - React UI for creating workflows, browsing runs, templates, agents, and skills.
 - Meta-workflow APIs for scanning GitHub projects and registering discovered
@@ -35,24 +39,31 @@ maintainer automation, workflow templates, and local-first orchestration.
 
 ```text
 packages/
-|-- shared/   TypeScript types and validation schemas
-|-- server/   Express API, workflow runtime, SQLite repository, SSE, sandbox
-|-- web/      React + Vite single-page app
-`-- agent/    Container entrypoint for executing one agent task
+|-- shared/     TypeScript types and validation schemas
+|-- server/     Express API, workflow runtime, SQLite repository, SSE, sandbox
+|-- web/        React + Vite single-page app
+|-- agent/      Legacy: container entrypoint for OpenAI-only Docker agent
+`-- cua-agent/  Cua + Pi Docker image (built from trycua/cua-xfce + @earendil-works/pi-coding-agent)
 ```
 
 Runtime flow:
 
 ```text
 workflow script -> sandbox parser -> validated definition -> SQLite run
-  -> runtime phases -> Docker agent runner -> SSE progress events -> web UI
+  -> runtime phases
+    -> CuaAgentRunner (default)
+       -> docker run dynflow-cua-pi:latest
+       -> mount per-workflow workspace into /home/cua/workspace
+       -> docker exec pi --mode json --no-session
+       -> parse JSONL, scan workspace for files
+  -> SSE progress events -> web UI
 ```
 
 ## Requirements
 
 - Node.js 22 or newer
 - npm
-- Docker for agent execution
+- Docker (optional - Windows Native Runner available for local execution)
 
 ## Quick Start
 
@@ -92,22 +103,83 @@ workflow("release-check", () => {
 Copy `.env.example` to `.env` and set credentials for agent execution:
 
 ```env
+# Provider API keys (priority: OPENCODE_API_KEY > OPENAI_API_KEY > ANTHROPIC_API_KEY)
 OPENCODE_API_KEY=your_opencode_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Provider base URL override (used by OpenCode / OpenAI compatible proxies)
 OPENAI_BASE_URL=https://opencode.ai/zen/v1
-OPENCODE_MODEL=mimo-v2.5-free
+
+# Runner selection (default: cua)
+DYNFLOW_RUNNER=cua
+
+# Cua image (when DYNFLOW_RUNNER=cua)
+DYNFLOW_CUA_IMAGE=dynflow-cua-pi:latest
+
+# Pi binary / provider / model overrides (cua-pi, pi-cua-native, pi-direct runners)
+DYNFLOW_PI_BINARY=pi
+DYNFLOW_PI_PROVIDER=opencode
+DYNFLOW_PI_MODEL=mimo-v2.5-free
+
+# Cua Computer Server (cua-pi and pi-cua-native runners)
+DYNFLOW_CUA_SERVER_URL=http://localhost:8000
+DYNFLOW_CUA_AUTOSTART=true
+DYNFLOW_PYTHON=python
+
+# Server
+HOST=127.0.0.1              # Server bind address (default: 127.0.0.1)
 PORT=3001
+DYNFLOW_CORS_ORIGINS=       # Comma-separated CORS origins (default: localhost:5173,127.0.0.1:5173)
 DB_PATH=./data/workflows.db
 ```
 
-`OPENAI_API_KEY` is also supported for compatibility, but `OPENCODE_API_KEY`
-takes precedence.
+`OPENAI_API_KEY` is the legacy fallback used by the OpenAI-only Docker agent
+(set `DYNFLOW_RUNNER=docker`). The `cua`, `cua-pi`, `pi-cua-native`, and
+`pi-direct` runners additionally consume `OPENCODE_API_KEY` and
+`ANTHROPIC_API_KEY` and are configured through `DYNFLOW_PI_*` / `DYNFLOW_CUA_*`
+variables above.
+
+### Windows Native Runner
+
+When Docker is not available, Windows hosts can use the built-in
+Windows Native Runner (auto-selected or opt-in via `DYNFLOW_RUNNER=windows-native`).
+It provides two isolation modes:
+
+- **Light mode** (default, no admin required): duplicates the server's
+  primary token, applies Job Object memory limits (`PROCESS_MEMORY`),
+  and enables `KILL_ON_JOB_CLOSE` for process tree cleanup. No
+  filesystem isolation.
+- **Strict mode** (`DYNFLOW_WIN_SANDBOX_STRICT=1`, requires admin):
+  uses `CreateRestrictedToken` to drop privileges and applies a DACL
+  on the workspace directory for filesystem sandboxing.
+
+## Building the Cua image
+
+```bash
+cd packages/cua-agent
+npm run build:image   # → tagged as dynflow-cua-pi:latest
+```
+
+## Workspace support
+
+A workflow can declare a `workspace` (host directory or git URL) that is
+mounted into the Cua container at `/home/cua/workspace`. All agents in a
+run share the same workspace; changes persist after the run completes.
+
+```json
+{
+  "name": "release-check",
+  "workspace": { "git": "https://github.com/foo/bar", "branch": "main" },
+  "script": "workflow(...)"
+}
+```
 
 ## Development Commands
 
 ```bash
 npm run build          # TypeScript build for all packages
 npm test               # Run the full Vitest suite
-npm run test:coverage  # Generate coverage
 npm run lint           # Run ESLint
 ```
 

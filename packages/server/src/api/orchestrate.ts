@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { orchestrate, OrchestratorLLMError, OrchestratorValidationError } from '../orchestrator/index.js';
-import type { Domain, AgentSource, AgentRole, PredefinedAgent, Skill, ApiResponse, WorkflowDefinition } from '@dynflow/shared';
+import type { ApiResponse, WorkflowDefinition } from '@dynflow/shared';
 
 const router = Router();
 
@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
       return res.status(502).json({ success: false, error: error.message, statusCode: error.statusCode });
     }
     if (error instanceof OrchestratorValidationError) {
-      return res.status(422).json({ success: false, error: error.message, validationErrors: (error as any).validationErrors });
+      return res.status(422).json({ success: false, error: error.message, validationErrors: error.validationErrors });
     }
     res.status(500).json({ success: false, error: String(error) });
   }

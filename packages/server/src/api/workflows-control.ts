@@ -7,7 +7,14 @@ import type { WorkflowExecuteOptions } from '../workflow/runtime.js';
 import { ProjectService } from '../project/project-service.js';
 import { createAgentRunner } from '../runner/index.js';
 import { StreamManager } from '../sse/stream-manager.js';
-import type { WorkflowStatus } from '@dynflow/shared';
+import type { RuntimeConfig } from '@dynflow/shared';
+import { RuntimeConfigSchema } from '@dynflow/shared';
+import { CuaAgentRunner } from '../runner/cua-runner.js';
+import { CuaPiRunner } from '../runner/cua-pi-runner.js';
+import { PiDirectRunner } from '../runner/pi-direct-runner.js';
+import { PiCuaNativeRunner } from '../runner/pi-cua-native-runner.js';
+import { DockerAgentRunner } from '../runner/docker-runner.js';
+import { WslDockerAgentRunner } from '../runner/wsl-docker-runner.js';
 
 const router = Router();
 
@@ -20,6 +27,42 @@ const activeRuntimes = new Map<string, WorkflowRuntime>();
 // ProjectService singleton for output directory management
 // ---------------------------------------------------------------------------
 const projectService = new ProjectService();
+
+/**
+ * Check if a runner ID is available on this server.
+ */
+function isRunnerAvailable(runnerId: string): boolean {
+  switch (runnerId) {
+    case 'cua': return CuaAgentRunner.isAvailable();
+    case 'cua-pi': return CuaPiRunner.isAvailable();
+    case 'pi-cua-native': return PiCuaNativeRunner.isAvailable();
+    case 'pi-direct': return PiDirectRunner.isAvailable();
+    case 'docker': return DockerAgentRunner.isAvailable() || WslDockerAgentRunner.isAvailable();
+    default: return false;
+  }
+}
+
+/**
+ * Resolve the API key based on the requested LLM provider.
+ * When provider is specified, returns its key or null (fail fast, no silent fallback).
+ * When provider is undefined, falls back through OPENCODE -> OPENAI -> ANTHROPIC.
+ */
+function resolveApiKey(provider?: string): string | null {
+  const envMap: Record<string, string | undefined> = {
+    opencode: process.env.OPENCODE_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    anthropic: process.env.ANTHROPIC_API_KEY,
+  };
+
+  if (provider) {
+    const key = envMap[provider];
+    if (!key) return null; // Fail fast — don't fall back to a different provider
+    return key;
+  }
+
+  // No provider specified — fallback chain
+  return envMap.opencode || envMap.openai || envMap.anthropic || null;
+}
 
 // ---------------------------------------------------------------------------
 // GET /:id — Retrieve a workflow run
@@ -50,14 +93,40 @@ router.post('/:id/start', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  // Resolve API key before any side effects
-  const apiKey = process.env.OPENCODE_API_KEY || process.env.OPENAI_API_KEY || '';
+  // Validate optional runtimeConfig override
+  let overrideConfig: RuntimeConfig | undefined;
+  if (req.body?.runtimeConfig !== undefined) {
+    const parsed = RuntimeConfigSchema.safeParse(req.body.runtimeConfig);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid runtime config', details: parsed.error.issues });
+    }
+    if (parsed.data.runner && !isRunnerAvailable(parsed.data.runner)) {
+      return res.status(400).json({ success: false, error: `Runner '${parsed.data.runner}' is not available on this server.` });
+    }
+    overrideConfig = parsed.data;
+    // Persist the override
+    repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
+  }
+
+  // Resolve API key with provider awareness
+  const apiKey = resolveApiKey(overrideConfig?.llmProvider);
   if (!apiKey) {
-    return res.status(400).json({ success: false, error: 'No API key found. Set OPENCODE_API_KEY or OPENAI_API_KEY.' });
+    const missing = overrideConfig?.llmProvider 
+      ? `${overrideConfig.llmProvider.toUpperCase()}_API_KEY is not set`
+      : 'No API key found. Set OPENCODE_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.';
+    return res.status(400).json({ success: false, error: missing });
+  }
+
+  // Atomically claim the workflow — ensures only one caller transitions
+  // from 'pending' to 'running', preventing race conditions on concurrent
+  // start requests.
+  const claimed = repo.transitionWorkflowStatus(run.id, 'pending', 'running');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is already running or in an invalid state.' });
   }
 
   const runtime = new WorkflowRuntime(
-    createAgentRunner(),
+    createAgentRunner(overrideConfig),
     StreamManager.getInstance(),
     projectService,
   );
@@ -74,9 +143,10 @@ router.post('/:id/start', (req, res) => {
   // Respond immediately, then start execution asynchronously
   res.json({ success: true, data: { status: 'running' } });
 
-  setImmediate(() => {
-    runtime.execute(run.id, apiKey, optsToPass).catch((err: unknown) => {
-      activeRuntimes.delete(run.id);
+  setImmediate(async () => {
+    try {
+      await runtime.execute(run.id, apiKey, optsToPass);
+    } catch (err: unknown) {
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
         type: 'workflow_failed',
@@ -84,7 +154,9 @@ router.post('/:id/start', (req, res) => {
         timestamp: new Date().toISOString(),
         data: { error: String(err) },
       });
-    });
+    } finally {
+      activeRuntimes.delete(run.id);
+    }
   });
 });
 
@@ -104,7 +176,11 @@ router.post('/:id/pause', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  repo.updateWorkflowStatus(run.id, 'paused');
+  // Atomically transition from 'running' to 'paused'
+  const claimed = repo.transitionWorkflowStatus(run.id, 'running', 'paused');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is not in a running state.' });
+  }
   return res.json({ success: true, data: { status: 'paused' } });
 });
 
@@ -124,10 +200,27 @@ router.post('/:id/resume', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  // Resolve API key before any side effects
-  const apiKey = process.env.OPENCODE_API_KEY || process.env.OPENAI_API_KEY || '';
+  // Check for runtime config override on resume
+  let resumeOverrideConfig: RuntimeConfig | undefined;
+  if (req.body?.runtimeConfig !== undefined) {
+    const parsed = RuntimeConfigSchema.safeParse(req.body.runtimeConfig);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid runtime config', details: parsed.error.issues });
+    }
+    if (parsed.data.runner && !isRunnerAvailable(parsed.data.runner)) {
+      return res.status(400).json({ success: false, error: `Runner '${parsed.data.runner}' is not available on this server.` });
+    }
+    resumeOverrideConfig = parsed.data;
+    repo.updateWorkflowRun(run.id, { runtimeConfig: parsed.data });
+  }
+
+  // Resolve API key with provider awareness
+  const apiKey = resolveApiKey(resumeOverrideConfig?.llmProvider);
   if (!apiKey) {
-    return res.status(400).json({ success: false, error: 'No API key found. Set OPENCODE_API_KEY or OPENAI_API_KEY.' });
+    const missing = resumeOverrideConfig?.llmProvider 
+      ? `${resumeOverrideConfig.llmProvider.toUpperCase()}_API_KEY is not set`
+      : 'No API key found. Set OPENCODE_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.';
+    return res.status(400).json({ success: false, error: missing });
   }
 
   // Remove stale runtime if present (from the original start before pause)
@@ -137,12 +230,17 @@ router.post('/:id/resume', (req, res) => {
     activeRuntimes.delete(run.id);
   }
 
+  // Atomically transition from 'paused' to 'running'
+  const claimed = repo.transitionWorkflowStatus(run.id, 'paused', 'running');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is not in a paused state.' });
+  }
+
   // Respond immediately, then start execution in the next tick
-  repo.updateWorkflowStatus(run.id, 'running');
   res.json({ success: true, data: { status: 'running' } });
 
   const runtime = new WorkflowRuntime(
-    createAgentRunner(),
+    createAgentRunner(resumeOverrideConfig),
     StreamManager.getInstance(),
     projectService,
   );
@@ -156,9 +254,10 @@ router.post('/:id/resume', (req, res) => {
   if (req.body?.outputDir) executeOpts.outputDir = req.body.outputDir;
   const optsToPass = Object.keys(executeOpts).length > 0 ? executeOpts : undefined;
 
-  setImmediate(() => {
-    runtime.execute(run.id, apiKey, optsToPass).catch((err: unknown) => {
-      activeRuntimes.delete(run.id);
+  setImmediate(async () => {
+    try {
+      await runtime.execute(run.id, apiKey, optsToPass);
+    } catch (err: unknown) {
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
         type: 'workflow_failed',
@@ -166,7 +265,9 @@ router.post('/:id/resume', (req, res) => {
         timestamp: new Date().toISOString(),
         data: { error: String(err) },
       });
-    });
+    } finally {
+      activeRuntimes.delete(run.id);
+    }
   });
 });
 
@@ -187,7 +288,12 @@ router.post('/:id/stop', (req, res) => {
     return res.status(409).json({ success: false, error: transition.error });
   }
 
-  repo.updateWorkflowStatus(run.id, 'stopped');
+  // Atomically transition from 'running' or 'paused' to 'stopped'
+  const claimed = repo.transitionWorkflowStatus(run.id, 'running', 'stopped')
+    || repo.transitionWorkflowStatus(run.id, 'paused', 'stopped');
+  if (!claimed) {
+    return res.status(409).json({ success: false, error: 'Workflow is not running or paused.' });
+  }
 
   // Abort active runtime instance if present
   const active = activeRuntimes.get(run.id);
@@ -261,4 +367,5 @@ function escapeScriptString(value: string): string {
     .replace(/\r/g, '\\r');
 }
 
+export { activeRuntimes };
 export default router;

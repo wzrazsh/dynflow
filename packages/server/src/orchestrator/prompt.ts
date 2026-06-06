@@ -17,7 +17,7 @@ import type {
   Skill,
 } from '@dynflow/shared';
 import type { PredefinedAgent } from '@dynflow/shared';
-import { CandidateSelector, maxChoicesPerStep } from './candidates.js';
+import { maxChoicesPerStep } from './candidates.js';
 
 // ---------------------------------------------------------------------------
 // Context

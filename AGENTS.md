@@ -1,4 +1,4 @@
-# AGENTS.md - DynFlow Development Guide
+﻿# AGENTS.md - DynFlow Development Guide
 
 ## Agent Identity
 
@@ -11,7 +11,10 @@ DynFlow is a web-based multi-agent workflow orchestration system with:
 - **Backend**: Express + TypeScript server (port 3001)
 - **Frontend**: React + Vite SPA (port 5173)
 - **Database**: SQLite with WAL mode
-- **Agent Execution**: Docker containers with OpenAI GPT integration
+- **Agent Execution**: Pluggable runners — `cua` (default, Pi in Cua XFCE container),
+  `cua-pi` / `pi-cua-native` (Pi + Cua Computer Server, no Pi-in-container),
+  `pi-direct` (host Pi CLI, opt-in), and `docker` (legacy OpenAI-only).
+  Providers: `opencode` (default), `openai`, `anthropic`.
 - **Sandbox**: isolated-vm V8 isolates + fallback pattern parser
 
 ## Architecture Decisions
@@ -37,10 +40,195 @@ pending → running → paused → running → completed
 
 ### Agent Runner
 
-- Uses `fetch()` directly (no `openai` npm package)
-- Supports configurable `OPENAI_BASE_URL` for proxies
-- Timeout via AbortController
-- Results captured from stdout JSON
+DynFlow ships six agent runners. Selection happens in `packages/server/src/runner/index.ts`:
+
+- **`CuaAgentRunner`** (default) — starts the `dynflow-cua-pi` Docker image
+  (trycua/cua-xfce + `@earendil-works/pi-coding-agent`), mounts the
+  per-workflow workspace at `/home/cua/workspace`, then `docker exec`s
+  `pi --mode json --no-session` and parses JSONL events. Container stays
+  alive after the run for noVNC access.
+- **`CuaPiRunner`** — runs the local `pi` CLI on the host against a Cua
+  Computer Server (Python HTTP service) for sandboxed computer use.
+  No Docker required for the agent itself.
+- **`PiCuaNativeRunner`** — in-process Pi agent that calls
+  `runAgentLoop` from `@earendil-works/pi-agent-core` with custom
+  Cua-backed `AgentTool[]` definitions. No CLI fork, no JSONL parsing.
+- **`PiDirectRunner`** — runs the local `pi` CLI directly, with no
+  sandbox. **Opt-in only**, host-privileged, requires
+  `DYNFLOW_RUNNER=pi-direct`.
+- **`DockerAgentRunner` / `WslDockerAgentRunner`** — legacy
+  OpenAI-only Docker agent. WSL variant is auto-selected on Windows.
+  Uses `fetch()` directly (no `openai` npm package), supports
+  `OPENAI_BASE_URL` for proxies, aborts via `AbortController`, captures
+  results from stdout JSON.
+
+The Pi-based runners (`CuaAgentRunner`, `CuaPiRunner`,
+`PiCuaNativeRunner`, `PiDirectRunner`) honor `config.model` and
+`config.llmProvider` from the per-run `RuntimeConfig` and can be
+overridden with `DYNFLOW_PI_MODEL` / `DYNFLOW_PI_PROVIDER` env vars.
+`PiCuaNativeRunner` and `PiDirectRunner` are **explicit-only** — they
+are not auto-selected even when their dependencies are available.
+
+## Runtime Environment Configuration
+
+Users can specify which agent runner, LLM provider, and model to use per workflow.
+
+### Resolution Order
+
+Runtime configuration is resolved with the following priority (highest first):
+
+1. **Run override** — provided in the Start Run dialog when starting/resuming a workflow
+2. **Definition default** — set in the Create Workflow form when the workflow is created
+3. **Environment variable** — server-wide defaults when no runtime config is set
+
+### Three Dimensions
+
+- **Runner**: Which agent runner executes the workflow agents
+  - Options: `cua`, `cua-pi`, `pi-cua-native`, `pi-direct`, `docker`, `windows-native`
+  - Fetched from `GET /api/system/info` — only available runners are shown
+- **Provider**: The LLM provider for agent prompts
+  - Options: `opencode`, `openai`, `anthropic`
+  - Filtered by available API keys (`OPENCODE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+- **Model**: Free-text model identifier
+  - Suggestions come from provider-specific hardcoded lists in `PROVIDER_MODELS`
+  - Any string accepted (no validation against known lists)
+
+### API Endpoints
+
+- `GET /api/system/info` — Returns available runners, providers, models, and defaults
+- `POST /api/workflows` — Accepts optional `runtimeConfig` in request body
+- `POST /:id/start` — Accepts optional `runtimeConfig` override with server-side validation
+- `POST /:id/resume` — Accepts optional `runtimeConfig` override
+
+### UI Components
+
+- **RuntimeConfigForm** — Reusable form with runner/provider dropdowns and model text input
+- **StartRunDialog** — Modal dialog with pre-populated defaults for starting workflows
+- **RuntimeConfigChips** — Read-only display showing resolved runner/provider/model
+
+### Runner Fixes
+
+Three Pi-based runners were fixed to respect `config.model` and `config.llmProvider`:
+
+- **CuaAgentRunner**: Added `--model` and `--provider` flags to the `docker exec pi` command
+- **CuaPiRunner**: Fixed sentinel bug where `'gpt-4o'` was ignored; now uses `config.llmProvider`
+- **PiDirectRunner**: Same sentinel fix; `buildChildEnv` uses `config.llmProvider`
+- **PiCuaNativeRunner**: `resolveModel` checks `config.model` before falling back to default
+
+### Windows Native Runner
+
+- **`WindowsNativeRunner`** — Win32 Restricted Token + Job Object
+  isolation (Chrome/Edge/Firefox-style process sandbox) via Koffi FFI.
+  Auto-selected on Windows when Docker is unavailable; opt-in via
+  `DYNFLOW_RUNNER=windows-native`. Configurable light/strict
+  filesystem isolation via `DYNFLOW_WIN_SANDBOX_STRICT=1`.
+
+#### How to enable
+
+```bash
+# Force the runner regardless of Docker availability
+DYNFLOW_RUNNER=windows-native npm run dev
+
+# Add strict-mode DACL isolation (requires elevated server)
+DYNFLOW_WIN_SANDBOX_STRICT=1 DYNFLOW_RUNNER=windows-native npm run dev
+```
+
+In the web UI's **Start Run** dialog, the runner dropdown lists
+`windows-native` only on hosts where `WindowsNativeRunner.isAvailable()`
+returns `true` (i.e., `process.platform === 'win32'` and Koffi loads
+without error). The `/api/system/info` endpoint reports availability
+in the same way.
+
+#### Strict mode
+
+Strict mode requires the DynFlow server to be running as Administrator
+because applying a DACL to the workspace is a privileged operation.
+When strict mode is requested from a non-elevated server, the runner
+falls back to light mode and logs a clear warning. Light mode runs
+the child under a duplicated copy of the server's own primary token
+(no `CreateRestrictedToken` call) and applies the memory-cap Job
+Object. It does not touch the workspace DACL, and it works fully
+non-elevated. Note: light mode gives weaker filesystem isolation
+than strict mode — the child sees the parent's filesystem under
+the server's normal user permissions, but is still capped by the
+Job Object's `KILL_ON_JOB_CLOSE` and `PROCESS_MEMORY` limits.
+
+#### Debugging
+
+`isAvailable()` returns `false` for any of the following reasons. The
+error message printed at runner init identifies which one applies:
+
+1. **Not on Windows.** The runner is a no-op on Linux/macOS. The
+   auto-select chain skips it entirely.
+2. **Koffi not installed.** Verify with
+   `node -e "require('koffi'); console.log('ok')"` from
+   `packages/server/`. Re-run `npm install` if it fails.
+3. **Koffi struct size mismatch.** `verifyStructSizes()` throws if
+   `sizeof(STARTUPINFOW) !== 104`,
+   `sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION) !== 144`, or
+   `sizeof(SECURITY_ATTRIBUTES) !== 24`. This usually means a
+   non-standard toolchain. The error message includes the actual
+   sizes for debugging.
+
+#### Test commands
+
+```bash
+# Unit tests (run on any platform, most mock the sandbox module)
+npx vitest run packages/server/src/runner/windows-native-runner.test.ts
+
+# Windows-only integration test (real Win32 calls)
+npx vitest run packages/server/src/runner/integration/windows-sandbox.integration.test.ts
+
+# Convenience target added by the package.json script
+npm run test:sandbox:windows --prefix packages/server
+```
+
+#### When this runner is auto-selected
+
+After `CuaAgentRunner` and `CuaPiRunner` fail their availability
+checks (typically: Docker not running, no `dynflow-cua-pi` image
+present, no Cua Computer Server detected), the auto-select chain
+checks `WindowsNativeRunner.isAvailable()` only on Windows hosts.
+The Docker path is still preferred when available, so on a Windows
+host with Docker Desktop running the chain never reaches the
+Windows Native runner.
+
+#### Companion PowerShell scripts
+
+Four operator-side scripts at
+`packages/server/scripts/sandbox/` cover manual recovery and
+inspection:
+
+- `New-SandboxProfile.ps1` — allocate a profile, apply DACL
+  (strict only).
+- `Start-SandboxedProcess.ps1` — launch a process under an
+  existing profile from PowerShell.
+- `Remove-SandboxProfile.ps1` — tear down, restore DACL.
+- `Get-SandboxProfiles.ps1` — list profiles and running PIDs.
+
+Full documentation:
+[`packages/server/scripts/sandbox/README.md`](packages/server/scripts/sandbox/README.md).
+
+#### Plan guardrails (do NOT change)
+
+- **AppContainer was explicitly rejected** during planning. The
+  chosen approach is Restricted Token + Job Object. Do not add
+  AppContainer as a fallback.
+- No GUI/tray icon for profile management. No antivirus / Defender
+  exclusion management. No Windows Event Log integration. No
+  profile persistence across runs (the TypeScript runner recreates
+  state per run; the PowerShell scripts persist to
+  `%LOCALAPPDATA%\dynflow\sandbox-profiles.json` for operator
+  convenience only).
+- Light mode must work non-elevated. Strict mode requires admin.
+  No changes that would force light mode to need admin.
+
+### Storage
+
+- `runtime_config_json TEXT` column on `workflow_runs` table (migration v6)
+- Stored as JSON string, validated with zod `RuntimeConfigSchema` on read
+- Definition default stored as part of `definition_json`
+- Run override stored in `runtime_config_json`
 
 ## Development Commands
 
@@ -68,53 +256,108 @@ npx tsc -b
 packages/
 ├── shared/
 │   └── src/
-│       ├── types.ts          # All shared TypeScript types
-│       ├── schema.ts         # Zod validation schema
-│       └── index.ts          # Barrel exports
+│       ├── types.ts              # All shared TypeScript types
+│       ├── schema.ts             # Zod validation schema
+│       ├── system.ts             # RuntimeConfig / PROVIDER_MODELS / RUNNER_INFO
+│       ├── agent-registry.ts     # Agent registry types
+│       ├── domain-registry.ts    # Domain registry types
+│       ├── skill-registry.ts     # Skill registry types
+│       └── index.ts              # Barrel exports
 ├── server/
 │   └── src/
-│       ├── index.ts          # Server entry point
-│       ├── app.ts            # Express app factory
-│       ├── api/
-│       │   ├── workflows.ts      # CRUD endpoints
-│       │   ├── workflows-control.ts  # Start/pause/resume/stop
-│       │   └── sse.ts           # SSE streaming endpoint
-│       ├── sandbox/
-│       │   ├── isolated-runtime.ts  # JS script execution
-│       │   └── types.ts        # Sandbox types
-│       ├── workflow/
-│       │   ├── state-machine.ts    # Workflow FSM
-│       │   ├── phase-executor.ts   # Parallel agent orchestration
-│       │   └── runtime.ts         # Full workflow runtime
-│       ├── runner/
-│       │   ├── types.ts           # AgentRunner interface
-│       │   └── docker-runner.ts   # OpenAI API implementation
-│       ├── db/
-│       │   ├── connection.ts      # SQLite connection + retry
-│       │   ├── schema.ts          # Table creation
-│       │   └── repository.ts      # CRUD operations
-│       └── sse/
-│           ├── stream-manager.ts  # SSE connection management
-│           └── event-factory.ts   # Typed event creation
+│       ├── index.ts              # Server entry point
+│       ├── app.ts                # Express app factory
+│       ├── logger.ts             # Pino-style logger
+│       ├── agent/                # Agent registry (CRUD + predefined)
+│       ├── api/                  # HTTP routers
+│       │   ├── workflows.ts           # CRUD endpoints
+│       │   ├── workflows-control.ts   # Start / pause / resume / stop / fail / restart
+│       │   ├── sse.ts                 # SSE streaming endpoint
+│       │   ├── system.ts              # GET /api/system/info
+│       │   ├── domains.ts             # Domain registry
+│       │   ├── agent-sources.ts       # Agent source registry
+│       │   ├── predefined-agents.ts   # Predefined agent definitions
+│       │   ├── skills.ts              # Skill registry
+│       │   ├── templates.ts           # Workflow templates
+│       │   ├── projects.ts            # Project CRUD + workspace
+│       │   ├── orchestrate.ts         # LLM-powered workflow design
+│       │   └── meta.ts                # scan / extract / register GitHub projects
+│       ├── db/                   # SQLite: connection, schema, migrations, repository, template-repository
+│       ├── hook/                 # Lifecycle hook manager
+│       ├── integration/          # API-level integration tests (multi-agent-flow, runtime-config)
+│       ├── meta/                 # Project scanner / extractor / registrar modules
+│       ├── orchestrator/         # CandidateSelector + prompt builder for /api/orchestrate
+│       ├── project/              # Project service (workspace management, path validation)
+│       ├── runner/               # 6 agent runners + helpers
+│       │   ├── types.ts              # AgentRunner interface
+│       │   ├── cua-runner.ts         # CuaAgentRunner (default: dynflow-cua-pi container + Pi JSONL)
+│       │   ├── cua-pi-runner.ts       # CuaPiRunner (host Pi + Cua Computer Server)
+│       │   ├── cua-http-client.ts    # HTTP client for Cua Computer Server
+│       │   ├── pi-cua-native-runner.ts # PiCuaNativeRunner (in-process Pi + Cua tools)
+│       │   ├── pi-direct-runner.ts   # PiDirectRunner (host `pi` CLI, opt-in)
+│       │   ├── windows-native-runner.ts # WindowsNativeRunner (Windows Restricted Token + Job Object)
+│       │   ├── sandbox/              # Koffi FFI wrappers for Win32 token/job/process/DACL
+│       │   ├── docker-runner.ts      # DockerAgentRunner (legacy OpenAI-only)
+│       │   ├── wsl-docker-runner.ts  # WslDockerAgentRunner (Windows WSL variant)
+│       │   ├── pi-output-parser.ts   # Parse Pi JSONL output
+│       │   ├── workspace-scanner.ts  # List changed files in workspace
+│       │   ├── prompt-builder.ts     # Wrap user prompt w/ workspace context
+│       │   └── index.ts              # createAgentRunner() + isDockerAvailable()
+│       ├── scripts/              # Operator-side scripts
+│       │   └── sandbox/             # Windows native sandbox PowerShell tools (4 scripts)
+│       ├── sandbox/              # isolated-vm + fallback parser
+│       ├── skill/                # Skill registry + executor
+│       ├── sse/                  # stream-manager + event-factory
+│       └── workflow/             # state-machine, phase-executor, runtime, generator
 ├── web/
 │   └── src/
-│       ├── App.tsx              # Main app with view routing
-│       ├── main.tsx             # React entry point
-│       ├── api/
-│       │   ├── client.ts        # Fetch wrapper
-│       │   └── workflows.ts     # Workflow API functions
+│       ├── App.tsx               # Main app with view routing
+│       ├── main.tsx              # React entry point
+│       ├── api/                  # Fetch wrappers per backend resource
+│       │   ├── client.ts             # Fetch wrapper
+│       │   ├── workflows.ts          # Workflow API functions
+│       │   ├── templates.ts          # Template API
+│       │   ├── projects.ts           # Project API
+│       │   ├── registry.ts           # Domain / agent / skill registry API
+│       │   ├── skills.ts             # Skills API
+│       │   ├── meta.ts               # Meta-workflow API
+│       │   └── system.ts             # fetchSystemInfo()
 │       ├── components/
-│       │   ├── WorkflowList.tsx      # Workflow list view
-│       │   ├── CreateWorkflowForm.tsx # Script editor
-│       │   ├── WorkflowDetail.tsx    # Detail with drill-down
-│       │   ├── StatusBadge.tsx       # Status indicator
-│       │   └── ErrorBoundary.tsx     # Error handler
+│       │   ├── Layout.tsx              # App shell
+│       │   ├── Sidebar.tsx             # Navigation
+│       │   ├── WorkflowList.tsx        # Workflow list view
+│       │   ├── WorkflowDrawer.tsx      # Workflow detail drawer
+│       │   ├── WorkflowDetail.tsx      # Detail with drill-down
+│       │   ├── WorkflowHistory.tsx     # Run history view
+│       │   ├── CreateWorkflowForm.tsx  # Script editor (with RuntimeConfigForm)
+│       │   ├── StartRunDialog.tsx      # Start workflow modal (with RuntimeConfigForm)
+│       │   ├── RuntimeConfigForm.tsx   # Reusable runner / provider / model form
+│       │   ├── RuntimeConfigChips.tsx  # Read-only resolved config display
+│       │   ├── StatusBadge.tsx         # Status indicator
+│       │   ├── ErrorBoundary.tsx       # React error boundary
+│       │   ├── Toast.tsx               # Toast notifications
+│       │   ├── TagPicker.tsx           # Tag selector
+│       │   ├── ViewCodeModal.tsx       # Code viewer modal
+│       │   ├── ImportExport.tsx        # Workflow import / export
+│       │   ├── MetaWorkflow.tsx        # Meta-workflow (scan / extract / register)
+│       │   ├── ProjectList.tsx         # Project list view
+│       │   ├── ProjectDetail.tsx       # Project detail view
+│       │   ├── AgentPicker.tsx         # Hierarchical agent picker
+│       │   ├── SkillPicker.tsx         # Skill picker with search / filters
+│       │   ├── TemplateList.tsx        # Template list
+│       │   ├── TemplateDetail.tsx      # Template detail
+│       │   ├── TemplateForm.tsx        # Template create / edit
+│       │   └── TemplateVersionHistory.tsx  # Template version history
 │       └── hooks/
-│           └── useSSE.ts        # SSE custom hook
-└── agent/
-    └── src/
-        ├── run.ts               # Agent execution script
-        └── Dockerfile           # Docker image (node:22-alpine)
+│           ├── useSSE.ts            # SSE custom hook
+│           └── useDebouncedValue.ts # Debounced value hook
+├── agent/                       # Legacy OpenAI-only Docker agent
+│   ├── run.ts
+│   └── Dockerfile (node:22-alpine)
+└── cua-agent/                   # Cua sandbox + Pi image (default)
+    ├── Dockerfile               # trycua/cua-xfce + @earendil-works/pi-coding-agent
+    ├── package.json
+    └── README.md
 ```
 
 ## Key Patterns
@@ -235,9 +478,10 @@ Verify with: `docker info` or `docker ps`
 
 ## Performance Considerations
 
-- Max 16 concurrent agents (configurable)
-- Agent timeout: 5 minutes default
-- Script timeout: 30 seconds
-- Memory limit: 128MB per sandbox
+- Max 16 concurrent agents (configurable, per-phase `maxConcurrency`)
+- Agent timeout: 5 minutes default (per-agent `timeoutMs`, schema max 10 min)
+- Script timeout: 30 seconds (`executeScript` `timeoutMs` default)
+- Memory limit: 512MB per legacy Docker agent container (`--memory=512m`),
+  2GB default per Cua agent container (configurable via `memory` option)
 - SQLite WAL mode for write performance
 - SSE heartbeat every 15 seconds

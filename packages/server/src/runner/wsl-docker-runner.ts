@@ -104,8 +104,8 @@ export class WslDockerAgentRunner implements AgentRunner {
     // Determine output directory
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runOutputDir: string;
-    if (config.outputDir) {
-      runOutputDir = config.outputDir;
+    if (config.workspacePath) {
+      runOutputDir = config.workspacePath;
     } else {
       runOutputDir = join(this.outputDir, runId);
     }
@@ -117,7 +117,7 @@ export class WslDockerAgentRunner implements AgentRunner {
 
     // Escape the prompt for shell execution
     const escapedPrompt = config.prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    const escapedApiKey = (config.openaiApiKey || process.env.OPENAI_API_KEY || '').replace(/"/g, '\\"');
+    const escapedApiKey = (config.apiKey || process.env.OPENAI_API_KEY || '').replace(/"/g, '\\"');
 
     // Build environment variable arguments
     const envArgs = this.getEnvVars();

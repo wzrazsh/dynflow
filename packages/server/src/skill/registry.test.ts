@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
-import { getDb, closeDb } from '../db/connection.js';
+import { closeDb } from '../db/connection.js';
 import { initSchema } from '../db/schema.js';
 import * as repo from '../db/repository.js';
 import * as registry from './registry.js';
@@ -106,11 +106,6 @@ describe('getSkillsBySource', () => {
   it('3 — returns skills for a specific source only', () => {
     const { sourceId: srcA } = setupSource();
     // Create a second source under the same domain
-    const domain = repo.getDomain(
-      (repo.getSourcesByDomain(
-        repo.getAllDomains()[0].id,
-      )[0] as { domainId: string }).domainId,
-    );
     // Simpler: just create a second source under existing domain
     const domainId = repo.getAllDomains()[0].id;
     const srcB = repo.createAgentSource({

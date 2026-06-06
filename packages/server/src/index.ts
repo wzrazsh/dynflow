@@ -14,6 +14,7 @@ import { runMigrations, getMigrationStatus } from './db/migrations.js';
 import { logger } from './logger.js';
 
 const port = process.env.PORT || 3001
+const host = process.env.HOST || '127.0.0.1'
 const app = createApp()
 
 // ---------------------------------------------------------------------------
@@ -54,8 +55,8 @@ if (isDockerAvailable()) {
 // Global error handler — must be registered AFTER all routes
 app.use(errorHandler);
 
-const server = app.listen(port, () => {
-  logger.info(`DynFlow server listening on port ${port}`)
+const server = app.listen(port, host, () => {
+  logger.info(`DynFlow server listening on ${host}:${port}`)
 });
 
 // ---------------------------------------------------------------------------

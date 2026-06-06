@@ -63,7 +63,7 @@ workflow script -> sandbox parser -> validated definition -> SQLite run
 
 - Node.js 22 or newer
 - npm
-- Docker for agent execution
+- Docker (optional - Windows Native Runner available for local execution)
 
 ## Quick Start
 
@@ -128,7 +128,9 @@ DYNFLOW_CUA_AUTOSTART=true
 DYNFLOW_PYTHON=python
 
 # Server
+HOST=127.0.0.1              # Server bind address (default: 127.0.0.1)
 PORT=3001
+DYNFLOW_CORS_ORIGINS=       # Comma-separated CORS origins (default: localhost:5173,127.0.0.1:5173)
 DB_PATH=./data/workflows.db
 ```
 
@@ -137,6 +139,20 @@ DB_PATH=./data/workflows.db
 `pi-direct` runners additionally consume `OPENCODE_API_KEY` and
 `ANTHROPIC_API_KEY` and are configured through `DYNFLOW_PI_*` / `DYNFLOW_CUA_*`
 variables above.
+
+### Windows Native Runner
+
+When Docker is not available, Windows hosts can use the built-in
+Windows Native Runner (auto-selected or opt-in via `DYNFLOW_RUNNER=windows-native`).
+It provides two isolation modes:
+
+- **Light mode** (default, no admin required): duplicates the server's
+  primary token, applies Job Object memory limits (`PROCESS_MEMORY`),
+  and enables `KILL_ON_JOB_CLOSE` for process tree cleanup. No
+  filesystem isolation.
+- **Strict mode** (`DYNFLOW_WIN_SANDBOX_STRICT=1`, requires admin):
+  uses `CreateRestrictedToken` to drop privileges and applies a DACL
+  on the workspace directory for filesystem sandboxing.
 
 ## Building the Cua image
 

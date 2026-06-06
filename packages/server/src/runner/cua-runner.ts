@@ -170,8 +170,8 @@ export class CuaAgentRunner implements AgentRunner {
       `-p ${noVncPort}:6901 ` +
       `-p ${cuaApiPort}:8000 ` +
       `--volume ${shellQuote(config.workspacePath)}:${config.workspaceMount} ` +
-      `-e ANTHROPIC_API_KEY="${config.openaiApiKey ?? process.env.ANTHROPIC_API_KEY ?? ''}" ` +
-      `-e OPENAI_API_KEY="${config.openaiApiKey ?? process.env.OPENAI_API_KEY ?? ''}" ` +
+      `-e ANTHROPIC_API_KEY="${config.apiKey ?? process.env.ANTHROPIC_API_KEY ?? ''}" ` +
+      `-e OPENAI_API_KEY="${config.apiKey ?? process.env.OPENAI_API_KEY ?? ''}" ` +
       `-e PI_CWD=${config.workspaceMount} ` +
       `${this.image}`;
     const { stdout } = await execAsync(runCmd);

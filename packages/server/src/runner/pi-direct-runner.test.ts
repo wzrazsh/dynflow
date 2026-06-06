@@ -173,7 +173,7 @@ describe('PiDirectRunner', () => {
       expect(opts.shell).toBe(false);
     });
 
-    it('forwards config.openaiApiKey into the child environment, but ONLY for the configured provider', async () => {
+    it('forwards config.apiKey into the child environment, but ONLY for the configured provider', async () => {
       const child = makeChildMock({ code: 0 });
       const spawnMock = vi.fn().mockReturnValue(child);
       vi.doMock('node:child_process', () => ({
@@ -189,7 +189,7 @@ describe('PiDirectRunner', () => {
       await runner.run({
         agentId: 'test',
         prompt: 'hi',
-        openaiApiKey: 'sk-test-key-1234',
+        apiKey: 'sk-test-key-1234',
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
@@ -204,7 +204,7 @@ describe('PiDirectRunner', () => {
       expect(opts.env.ANTHROPIC_API_KEY).toBeUndefined();
     });
 
-    it('forwards config.openaiApiKey to OPENAI_API_KEY when provider=openai', async () => {
+    it('forwards config.apiKey to OPENAI_API_KEY when provider=openai', async () => {
       const child = makeChildMock({ code: 0 });
       const spawnMock = vi.fn().mockReturnValue(child);
       vi.doMock('node:child_process', () => ({
@@ -219,7 +219,7 @@ describe('PiDirectRunner', () => {
       await runner.run({
         agentId: 'test',
         prompt: 'hi',
-        openaiApiKey: 'sk-openai-key-5678',
+        apiKey: 'sk-openai-key-5678',
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
@@ -335,7 +335,7 @@ describe('PiDirectRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-test-key',
+        apiKey: 'sk-test-key',
         llmProvider: 'openai',
       });
 
@@ -368,7 +368,7 @@ describe('PiDirectRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-anthropic-key',
+        apiKey: 'sk-anthropic-key',
       });
 
       const args = spawnMock.mock.calls[0][1] as string[];

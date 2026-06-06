@@ -82,7 +82,7 @@ export class PiDirectRunner implements AgentRunner {
    * systems where the user-specific npm prefix is not on the inherited
    * PATH), a small set of OS-required variables (HOME / USERPROFILE /
    * SYSTEMROOT / TEMP / LANG), and the API key the workflow control layer
-   * explicitly passed in via `config.openaiApiKey`.
+   * explicitly passed in via `config.apiKey`.
    *
    * The key is set only on the env var that matches the configured provider
    * (e.g., `OPENAI_API_KEY` for provider=openai, `ANTHROPIC_API_KEY` for
@@ -98,19 +98,19 @@ export class PiDirectRunner implements AgentRunner {
     if (process.env.SYSTEMROOT) env.SYSTEMROOT = process.env.SYSTEMROOT;
     if (process.env.TEMP) env.TEMP = process.env.TEMP;
     if (process.env.LANG) env.LANG = process.env.LANG;
-    if (config.openaiApiKey) {
+    if (config.apiKey) {
       const provider = config.llmProvider ?? this.provider;
       switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
-          env.OPENAI_API_KEY = config.openaiApiKey;
+          env.OPENAI_API_KEY = config.apiKey;
           break;
         case 'anthropic':
-          env.ANTHROPIC_API_KEY = config.openaiApiKey;
+          env.ANTHROPIC_API_KEY = config.apiKey;
           break;
         case 'opencode':
         case 'opencode-go':
-          env.OPENCODE_API_KEY = config.openaiApiKey;
+          env.OPENCODE_API_KEY = config.apiKey;
           break;
         default:
           // Unknown provider: be conservative and set none of the provider

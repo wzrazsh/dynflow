@@ -229,7 +229,7 @@ describe('PiCuaNativeRunner', () => {
     expect(result.error).toMatch(/LLM exploded/);
   });
 
-  it('run() passes the configured openaiApiKey into AgentLoopConfig', async () => {
+  it('run() passes the configured apiKey into AgentLoopConfig', async () => {
     const { PiCuaNativeRunner } = await import('./pi-cua-native-runner.js');
     const runner = new PiCuaNativeRunner({
       cuaServerUrl: `http://127.0.0.1:${cuaPort}`,
@@ -241,7 +241,7 @@ describe('PiCuaNativeRunner', () => {
       timeoutMs: 5000,
       workspacePath: workDir,
       workspaceMount: workDir,
-      openaiApiKey: 'sk-test-key',
+      apiKey: 'sk-test-key',
     });
     const config = mockRunAgentLoop.mock.calls[0][2];
     expect(config.apiKey).toBe('sk-test-key');

@@ -271,7 +271,7 @@ describe('CuaPiRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-test-key',
+        apiKey: 'sk-test-key',
         llmProvider: 'openai',
       });
 
@@ -312,7 +312,7 @@ describe('CuaPiRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-anthropic-key',
+        apiKey: 'sk-anthropic-key',
         // llmProvider intentionally omitted
       });
 

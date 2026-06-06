@@ -157,19 +157,19 @@ export class CuaPiRunner implements AgentRunner {
     if (process.env.SYSTEMROOT) env.SYSTEMROOT = process.env.SYSTEMROOT;
     if (process.env.TEMP) env.TEMP = process.env.TEMP;
     if (process.env.LANG) env.LANG = process.env.LANG;
-    if (config.openaiApiKey) {
+    if (config.apiKey) {
       const provider = config.llmProvider ?? this.provider;
       switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
-          env.OPENAI_API_KEY = config.openaiApiKey;
+          env.OPENAI_API_KEY = config.apiKey;
           break;
         case 'anthropic':
-          env.ANTHROPIC_API_KEY = config.openaiApiKey;
+          env.ANTHROPIC_API_KEY = config.apiKey;
           break;
         case 'opencode':
         case 'opencode-go':
-          env.OPENCODE_API_KEY = config.openaiApiKey;
+          env.OPENCODE_API_KEY = config.apiKey;
           break;
       }
     }

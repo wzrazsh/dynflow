@@ -6,7 +6,7 @@ export interface AgentRunConfig {
   model?: string;
   timeoutMs: number;
   /** Legacy field, kept for DockerAgentRunner. */
-  openaiApiKey?: string;
+  apiKey?: string;
 
   // === Cua + Pi fields ===
   /** Absolute path on host to the shared workspace directory. */

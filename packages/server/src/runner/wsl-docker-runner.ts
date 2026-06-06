@@ -117,7 +117,7 @@ export class WslDockerAgentRunner implements AgentRunner {
 
     // Escape the prompt for shell execution
     const escapedPrompt = config.prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    const escapedApiKey = (config.openaiApiKey || process.env.OPENAI_API_KEY || '').replace(/"/g, '\\"');
+    const escapedApiKey = (config.apiKey || process.env.OPENAI_API_KEY || '').replace(/"/g, '\\"');
 
     // Build environment variable arguments
     const envArgs = this.getEnvVars();

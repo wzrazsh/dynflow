@@ -253,7 +253,7 @@ describe('WindowsNativeRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-test',
+        apiKey: 'sk-test',
         llmProvider: 'openai',
       });
       expect(result.success).toBe(true);
@@ -293,7 +293,7 @@ describe('WindowsNativeRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-test-key',
+        apiKey: 'sk-test-key',
         llmProvider: 'openai',
       });
       const envArg = mocks.createSandbox.mock.calls[0]![0] as { environment: Record<string, string> };
@@ -396,7 +396,7 @@ describe('WindowsNativeRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-test',
+        apiKey: 'sk-test',
         llmProvider: 'openai',
       });
       expect(mocks.createProcessAsUser).toHaveBeenCalledTimes(1);
@@ -490,7 +490,7 @@ describe('WindowsNativeRunner', () => {
         timeoutMs: 5000,
         workspacePath: workDir,
         workspaceMount: workDir,
-        openaiApiKey: 'sk-anthropic',
+        apiKey: 'sk-anthropic',
       });
       const envArg = mocks.createSandbox.mock.calls[0]![0] as { environment: Record<string, string> };
       expect(envArg.environment.ANTHROPIC_API_KEY).toBe('sk-anthropic');

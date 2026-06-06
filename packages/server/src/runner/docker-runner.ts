@@ -42,7 +42,7 @@ export class DockerAgentRunner implements AgentRunner {
       `-e AGENT_PROMPT="${config.prompt.replace(/"/g, '\\"')}" ` +
       `-e AGENT_MODEL="${config.model}" ` +
       `-e AGENT_TIMEOUT_MS="${config.timeoutMs}" ` +
-      `-e OPENAI_API_KEY="${config.openaiApiKey}" ` +
+      `-e OPENAI_API_KEY="${config.apiKey}" ` +
       `${this.image}`;
     const { stdout: containerId } = await execAsync(runCmd);
     const cid = containerId.trim();

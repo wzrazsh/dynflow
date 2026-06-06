@@ -103,12 +103,12 @@ export class WorkflowRuntime {
    * - When project context is provided, updates version meta via ProjectService
    *
    * @param workflowRunId – ID of the workflow run to execute
-   * @param openaiApiKey  – API key forwarded to the AgentRunner
+   * @param apiKey  – API key forwarded to the AgentRunner
    * @param executeOpts   – Optional project/version/output-dir context
    */
   async execute(
     workflowRunId: string,
-    openaiApiKey: string,
+    apiKey: string,
     executeOpts?: WorkflowExecuteOptions,
   ): Promise<void> {
     // 1. Load workflow from DB
@@ -197,7 +197,7 @@ export class WorkflowRuntime {
 
       const phaseResult = await executor.execute(
         agents,
-        openaiApiKey,
+        apiKey,
         maxConcurrency,
         workspacePath,
       );

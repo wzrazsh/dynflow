@@ -322,8 +322,8 @@ export class PiCuaNativeRunner implements AgentRunner {
     // Forward the API key into the stream options. We pick the env var
     // name based on the configured provider (mirrors the
     // PiDirectRunner.buildChildEnv allowlist).
-    if (config.openaiApiKey) {
-      agentConfig.apiKey = config.openaiApiKey;
+    if (config.apiKey) {
+      agentConfig.apiKey = config.apiKey;
     } else {
       // Fall back to env-var name matching the (possibly overridden) provider
       // so we don't send an OpenCode key to the Anthropic endpoint or vice versa.

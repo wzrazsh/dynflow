@@ -168,7 +168,7 @@ export class PhaseExecutor {
           prompt: agent.prompt,
           model: agent.model ?? this.runtimeConfig?.model ?? 'gpt-4o',
           timeoutMs: agent.timeoutMs ?? 300_000,
-          openaiApiKey: apiKey,
+          apiKey: apiKey,
           workspacePath: workspacePath ?? '',
           workspaceMount: '/app/output',
           llmProvider: this.runtimeConfig?.llmProvider,

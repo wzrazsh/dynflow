@@ -133,19 +133,19 @@ export class WindowsNativeRunner implements AgentRunner {
       const v = process.env[key];
       if (v !== undefined) env[key] = v;
     }
-    if (config.openaiApiKey) {
+    if (config.apiKey) {
       const provider = config.llmProvider ?? this.provider;
       switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
-          env.OPENAI_API_KEY = config.openaiApiKey;
+          env.OPENAI_API_KEY = config.apiKey;
           break;
         case 'anthropic':
-          env.ANTHROPIC_API_KEY = config.openaiApiKey;
+          env.ANTHROPIC_API_KEY = config.apiKey;
           break;
         case 'opencode':
         case 'opencode-go':
-          env.OPENCODE_API_KEY = config.openaiApiKey;
+          env.OPENCODE_API_KEY = config.apiKey;
           break;
       }
     }

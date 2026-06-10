@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'node:crypto';
 import { getDb, withRetry } from './connection.js';
 import { RuntimeConfigSchema } from '@dynflow/shared';
 import type {
@@ -19,6 +20,11 @@ import type {
   Skill,
   SkillParameter,
   RuntimeConfig,
+  WorkflowExecutionModel,
+  WorkflowStep,
+  WorkflowStepStatus,
+  CreateWorkflowStepInput,
+  UpdateWorkflowStepInput,
 } from '@dynflow/shared';
 
 // ---------------------------------------------------------------------------
@@ -41,23 +47,33 @@ export function createWorkflowRun(
   opts?: {
     templateId?: string;
     templateVersion?: number;
+    projectName?: string;
     script?: string;
     runtimeConfig?: RuntimeConfig;
+    executionModel?: WorkflowExecutionModel;
+    scriptHash?: string;
   },
 ): WorkflowRun {
   const db = getDb();
   const id = uuidv4();
   const now = new Date().toISOString();
+  const executionModel = opts?.executionModel ?? 'static';
+  const scriptHash =
+    opts?.scriptHash ??
+    (executionModel === 'dynamic' && opts?.script
+      ? createHash('sha256').update(opts.script).digest('hex')
+      : null);
 
   withRetry(() =>
     db.prepare(
       `INSERT INTO workflow_runs (
          id, name, status, definition_json, created_at, updated_at,
-         template_id, template_version,
+         template_id, template_version, project_name,
          workspace_path, workspace_git_url, workspace_branch,
-         script, runtime_config_json
+         script, runtime_config_json,
+         execution_model, recovery_count, script_hash
        )
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     ).run(
       id,
       name,
@@ -66,11 +82,14 @@ export function createWorkflowRun(
       now,
       opts?.templateId ?? null,
       opts?.templateVersion ?? null,
+      opts?.projectName ?? null,
       definition.workspace?.path ?? null,
       definition.workspace?.git ?? null,
       definition.workspace?.branch ?? null,
       opts?.script ?? null,
       opts?.runtimeConfig ? JSON.stringify(opts.runtimeConfig) : null,
+      executionModel,
+      scriptHash,
     ),
   );
 
@@ -117,6 +136,7 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
       order: phase.order_num as number,
     };
   });
+  const steps = listWorkflowSteps(id);
 
   return {
     id: workflow.id as string,
@@ -130,12 +150,18 @@ export function getWorkflowRun(id: string): WorkflowRun | undefined {
       workflow.template_version === null || workflow.template_version === undefined
         ? undefined
         : (workflow.template_version as number),
+    projectName: (workflow.project_name as string | null) ?? undefined,
     workspacePath: (workflow.workspace_path as string | null) ?? undefined,
     workspaceGitUrl: (workflow.workspace_git_url as string | null) ?? undefined,
     workspaceBranch: (workflow.workspace_branch as string | null) ?? undefined,
     script: (workflow.script as string | null) ?? undefined,
     runtimeConfig: parseRuntimeConfig(workflow.runtime_config_json),
     definition: parseDefinition(workflow.definition_json),
+    executionModel:
+      (workflow.execution_model as WorkflowExecutionModel | null) ?? 'static',
+    recoveryCount: (workflow.recovery_count as number | null) ?? 0,
+    scriptHash: (workflow.script_hash as string | null) ?? undefined,
+    steps: steps.length > 0 ? steps : undefined,
   };
 }
 
@@ -170,6 +196,10 @@ export function listWorkflowRuns(
     params.push(`-${filters.sinceDays} days`);
   }
 
+  if (filters.projectName) {
+    conditions.push('project_name = ?');
+    params.push(filters.projectName);
+  }
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
 
   const countRow = withRetry(() =>
@@ -245,14 +275,23 @@ export function transitionWorkflowStatus(
 export function markOrphanRunsAsInterrupted(): number {
   const db = getDb();
   const now = new Date().toISOString();
-  const result = withRetry(() =>
-    db
+  return withRetry(() => {
+    const recoverable = db
       .prepare(
-        "UPDATE workflow_runs SET status = 'interrupted', updated_at = ? WHERE status = 'running'",
+        `UPDATE workflow_runs
+         SET status = 'recovering', updated_at = ?
+         WHERE status = 'running' AND execution_model = 'dynamic'`,
       )
-      .run(now),
-  );
-  return result.changes;
+      .run(now);
+    const interrupted = db
+      .prepare(
+        `UPDATE workflow_runs
+         SET status = 'interrupted', updated_at = ?
+         WHERE status = 'running' AND execution_model != 'dynamic'`,
+      )
+      .run(now);
+    return recoverable.changes + interrupted.changes;
+  });
 }
 
 /**
@@ -300,6 +339,272 @@ export function updateWorkflowRun(
 export function deleteWorkflowRun(id: string): void {
   const db = getDb();
   withRetry(() => db.prepare('DELETE FROM workflow_runs WHERE id = ?').run(id));
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic workflow step operations
+// ---------------------------------------------------------------------------
+
+export function createWorkflowStep(
+  workflowRunId: string,
+  input: CreateWorkflowStepInput,
+): WorkflowStep {
+  const db = getDb();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  withRetry(() =>
+    db
+      .prepare(
+        `INSERT INTO workflow_steps (
+           id, workflow_run_id, step_key, parent_step_key, type, sequence,
+           status, input_hash, input_json, output_json, metadata_json, error,
+           attempt, created_at, updated_at, started_at, completed_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL, NULL, NULL, 0, ?, ?, NULL, NULL)`,
+      )
+      .run(
+        id,
+        workflowRunId,
+        input.key,
+        input.parentKey ?? null,
+        input.type,
+        input.sequence ?? 0,
+        input.inputHash ?? null,
+        serializeJson(input.input),
+        now,
+        now,
+      ),
+  );
+  return getWorkflowStep(id)!;
+}
+
+export function getWorkflowStep(id: string): WorkflowStep | undefined {
+  const row = withRetry(() =>
+    getDb().prepare('SELECT * FROM workflow_steps WHERE id = ?').get(id),
+  ) as Record<string, unknown> | undefined;
+  return row ? rowToWorkflowStep(row) : undefined;
+}
+
+export function getWorkflowStepByKey(
+  workflowRunId: string,
+  key: string,
+): WorkflowStep | undefined {
+  const row = withRetry(() =>
+    getDb()
+      .prepare(
+        'SELECT * FROM workflow_steps WHERE workflow_run_id = ? AND step_key = ?',
+      )
+      .get(workflowRunId, key),
+  ) as Record<string, unknown> | undefined;
+  return row ? rowToWorkflowStep(row) : undefined;
+}
+
+export function listWorkflowSteps(workflowRunId: string): WorkflowStep[] {
+  const rows = withRetry(() =>
+    getDb()
+      .prepare(
+        'SELECT * FROM workflow_steps WHERE workflow_run_id = ? ORDER BY sequence ASC, created_at ASC, rowid ASC',
+      )
+      .all(workflowRunId),
+  ) as Record<string, unknown>[];
+  return rows.map(rowToWorkflowStep);
+}
+
+/**
+ * Atomically claim a pending step. A second caller receives `undefined`.
+ */
+export function claimWorkflowStep(
+  workflowRunId: string,
+  key: string,
+): WorkflowStep | undefined {
+  const db = getDb();
+  return withRetry(() => {
+    const claim = db.transaction(() => {
+      const now = new Date().toISOString();
+      const result = db
+        .prepare(
+          `UPDATE workflow_steps
+           SET status = 'running', attempt = attempt + 1,
+               started_at = ?, completed_at = NULL, updated_at = ?
+           WHERE workflow_run_id = ? AND step_key = ? AND status = 'pending'`,
+        )
+        .run(now, now, workflowRunId, key);
+      if (result.changes !== 1) return undefined;
+      const row = db
+        .prepare(
+          'SELECT * FROM workflow_steps WHERE workflow_run_id = ? AND step_key = ?',
+        )
+        .get(workflowRunId, key) as Record<string, unknown>;
+      return rowToWorkflowStep(row);
+    });
+    return claim();
+  });
+}
+
+/**
+ * Update a step, optionally requiring its current status to match.
+ */
+export function updateWorkflowStep(
+  id: string,
+  update: UpdateWorkflowStepInput,
+  expectedStatus?: WorkflowStepStatus,
+): WorkflowStep | undefined {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const clauses = ['updated_at = ?'];
+  const values: unknown[] = [now];
+
+  if (update.status !== undefined) {
+    clauses.push('status = ?');
+    values.push(update.status);
+    if (update.status === 'running') {
+      clauses.push('started_at = COALESCE(started_at, ?)', 'completed_at = NULL');
+      values.push(now);
+    } else if (isTerminalStepStatus(update.status)) {
+      clauses.push('completed_at = ?');
+      values.push(now);
+    }
+  }
+  if (update.input !== undefined) {
+    clauses.push('input_json = ?');
+    values.push(serializeJson(update.input));
+  }
+  if (update.output !== undefined) {
+    clauses.push('output_json = ?');
+    values.push(serializeJson(update.output));
+  }
+  if (update.metadata !== undefined) {
+    clauses.push('metadata_json = ?');
+    values.push(serializeJson(update.metadata));
+  }
+  if (update.error !== undefined) {
+    clauses.push('error = ?');
+    values.push(update.error);
+  }
+
+  values.push(id);
+  let where = 'id = ?';
+  if (expectedStatus !== undefined) {
+    where += ' AND status = ?';
+    values.push(expectedStatus);
+  }
+  const result = withRetry(() =>
+    db
+      .prepare(`UPDATE workflow_steps SET ${clauses.join(', ')} WHERE ${where}`)
+      .run(...values),
+  );
+  return result.changes === 1 ? getWorkflowStep(id) : undefined;
+}
+
+export function deleteWorkflowStep(id: string): boolean {
+  const result = withRetry(() =>
+    getDb().prepare('DELETE FROM workflow_steps WHERE id = ?').run(id),
+  );
+  return result.changes === 1;
+}
+
+/**
+ * Create a durable step if needed and atomically claim it for execution.
+ */
+export function beginWorkflowStep(input: {
+  workflowRunId: string;
+  stepKey: string;
+  parentKey?: string;
+  kind: WorkflowStep['kind'];
+  sequence: number;
+  inputHash: string;
+  input: unknown;
+}): WorkflowStep | undefined {
+  const db = getDb();
+  return withRetry(() => {
+    const begin = db.transaction(() => {
+      const now = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO workflow_steps (
+           id, workflow_run_id, step_key, parent_step_key, type, sequence,
+           status, input_hash, input_json, output_json, metadata_json, error,
+           attempt, created_at, updated_at, started_at, completed_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL, NULL, NULL, 0, ?, ?, NULL, NULL)
+         ON CONFLICT(workflow_run_id, step_key) DO NOTHING`,
+      ).run(
+        uuidv4(),
+        input.workflowRunId,
+        input.stepKey,
+        input.parentKey ?? null,
+        input.kind,
+        input.sequence,
+        input.inputHash,
+        serializeJson(input.input),
+        now,
+        now,
+      );
+      const result = db.prepare(
+        `UPDATE workflow_steps
+         SET status = 'running', attempt = attempt + 1, started_at = ?,
+             completed_at = NULL, error = NULL, updated_at = ?
+         WHERE workflow_run_id = ? AND step_key = ? AND status = 'pending'`,
+      ).run(now, now, input.workflowRunId, input.stepKey);
+      if (result.changes !== 1) return undefined;
+      const row = db.prepare(
+        'SELECT * FROM workflow_steps WHERE workflow_run_id = ? AND step_key = ?',
+      ).get(input.workflowRunId, input.stepKey) as Record<string, unknown>;
+      return rowToWorkflowStep(row);
+    });
+    return begin();
+  });
+}
+
+export function completeWorkflowStep(
+  workflowRunId: string,
+  key: string,
+  output: unknown,
+  metadata?: Record<string, unknown>,
+): WorkflowStep | undefined {
+  const step = getWorkflowStepByKey(workflowRunId, key);
+  if (!step) return undefined;
+  return updateWorkflowStep(
+    step.id,
+    { status: 'completed', output, metadata, error: null },
+    'running',
+  );
+}
+
+export function failWorkflowStep(
+  workflowRunId: string,
+  key: string,
+  error: string,
+): WorkflowStep | undefined {
+  const step = getWorkflowStepByKey(workflowRunId, key);
+  if (!step) return undefined;
+  return updateWorkflowStep(step.id, { status: 'failed', error }, 'running');
+}
+
+/**
+ * Put in-flight steps back into the pending queue after an interrupted run.
+ */
+export function resetRunningWorkflowSteps(workflowRunId: string): number {
+  const db = getDb();
+  return withRetry(() => {
+    const reset = db.transaction(() => {
+      const now = new Date().toISOString();
+      const result = db
+        .prepare(
+          `UPDATE workflow_steps
+           SET status = 'pending', started_at = NULL, completed_at = NULL,
+               error = NULL, updated_at = ?
+           WHERE workflow_run_id = ? AND status = 'running'`,
+        )
+        .run(now, workflowRunId);
+      db.prepare(
+        `UPDATE workflow_runs
+         SET recovery_count = recovery_count + 1, updated_at = ?
+         WHERE id = ?`,
+      ).run(now, workflowRunId);
+      return result.changes;
+    });
+    return reset();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +851,47 @@ function rowToAgentRun(row: Record<string, unknown>): AgentRun {
     noVncUrl: (row.no_vnc_url as string | null) ?? undefined,
     cuaApiUrl: (row.cua_api_url as string | null) ?? undefined,
   };
+}
+
+function rowToWorkflowStep(row: Record<string, unknown>): WorkflowStep {
+  return {
+    id: row.id as string,
+    workflowRunId: row.workflow_run_id as string,
+    key: row.step_key as string,
+    stepKey: row.step_key as string,
+    parentKey: (row.parent_step_key as string | null) ?? undefined,
+    type: row.type as WorkflowStep['type'],
+    kind: row.type as WorkflowStep['kind'],
+    sequence: row.sequence as number,
+    status: row.status as WorkflowStepStatus,
+    inputHash: (row.input_hash as string | null) ?? undefined,
+    input: parseJsonValue(row.input_json),
+    output: parseJsonValue(row.output_json),
+    metadata: parseJsonValue(row.metadata_json) as Record<string, unknown> | undefined,
+    error: (row.error as string | null) ?? undefined,
+    attempt: row.attempt as number,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+    startedAt: (row.started_at as string | null) ?? undefined,
+    completedAt: (row.completed_at as string | null) ?? undefined,
+  };
+}
+
+function serializeJson(value: unknown): string | null {
+  return value === undefined ? null : JSON.stringify(value);
+}
+
+function parseJsonValue(value: unknown): unknown {
+  if (typeof value !== 'string') return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function isTerminalStepStatus(status: WorkflowStepStatus): boolean {
+  return ['completed', 'failed', 'skipped', 'cancelled'].includes(status);
 }
 
 // ---------------------------------------------------------------------------

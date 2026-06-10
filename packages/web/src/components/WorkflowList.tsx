@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { fetchWorkflows } from '../api/workflows';
 import { fetchTemplates } from '../api/templates';
+import { fetchProjects } from '../api/projects';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import StatusBadge from './StatusBadge';
 import type { WorkflowRun, WorkflowListFilters, WorkflowStatus } from '@dynflow/shared';
@@ -51,6 +52,8 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
   const [templateFilter, setTemplateFilter] = useState('');
   const [timeFilter, setTimeFilter] = useState('');
   const [templates, setTemplates] = useState<{ id: string; name: string; workflowCount: number }[]>([]);
+  const [projects, setProjects] = useState<{ projectName: string }[]>([]);
+  const [projectFilter, setProjectFilter] = useState('');
 
   const debouncedName = useDebouncedValue(nameFilter, 300);
 
@@ -64,6 +67,7 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
         if (res.success) setTemplates(res.data);
       })
       .catch(() => { /* ignore */ });
+    fetchProjects().then(setProjects).catch(() => {});
   }, []);
 
   // Build filters object from current filter state
@@ -73,13 +77,14 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
     if (statusFilter) filters.status = statusFilter as WorkflowStatus;
     if (templateFilter) filters.templateId = templateFilter;
     if (timeFilter) filters.sinceDays = parseInt(timeFilter, 10);
+    if (projectFilter) filters.projectName = projectFilter;
     return filters;
-  }, [debouncedName, statusFilter, templateFilter, timeFilter]);
+  }, [debouncedName, statusFilter, templateFilter, timeFilter, projectFilter]);
 
   // Reset page to 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [debouncedName, statusFilter, templateFilter, timeFilter]);
+  }, [debouncedName, statusFilter, templateFilter, timeFilter, projectFilter]);
 
   // Main data fetch effect — runs on filter/page change
   useEffect(() => {
@@ -123,7 +128,7 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
         abortRef.current = null;
       }
     };
-  }, [debouncedName, statusFilter, templateFilter, timeFilter, page, buildFilters]);
+  }, [debouncedName, statusFilter, templateFilter, timeFilter, projectFilter, page, buildFilters]);
 
   // 5s auto-refresh — restarts when filters or page change
   useEffect(() => {
@@ -145,16 +150,17 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
       clearInterval(interval);
       controller.abort();
     };
-  }, [debouncedName, statusFilter, templateFilter, timeFilter, page, buildFilters]);
+  }, [debouncedName, statusFilter, templateFilter, timeFilter, projectFilter, page, buildFilters]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters = !!(nameFilter || statusFilter || templateFilter || timeFilter);
+  const hasFilters = !!(nameFilter || statusFilter || templateFilter || timeFilter || projectFilter);
 
   function handleClearFilters() {
     setNameFilter('');
     setStatusFilter('');
     setTemplateFilter('');
     setTimeFilter('');
+    setProjectFilter('');
   }
 
   // --- Render ---
@@ -213,6 +219,19 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <select
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          style={{ ...INPUT_STYLE, width: 160 }}
+          aria-label="Project filter"
+        >
+          <option value="">All Projects</option>
+          {projects.map((p) => (
+            <option key={p.projectName} value={p.projectName}>
+              {p.projectName}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Data area */}
@@ -242,20 +261,49 @@ export default function WorkflowList({ onSelect, onError }: WorkflowListProps) {
           {data.map((wf) => (
             <div
               key={wf.id}
-              onClick={() => onSelect(wf.id)}
               style={{
-                cursor: 'pointer',
                 padding: '8px',
                 border: '1px solid #ddd',
                 margin: '4px 0',
                 borderRadius: '4px',
               }}
             >
-              <strong>{wf.name}</strong>
-              {' '}
-              <StatusBadge status={wf.status} />
-              <div style={{ fontSize: '0.85rem', color: '#666' }}>
-                {wf.phases.length} phase(s) | {wf.phases.reduce((s, p) => s + p.agents.length, 0)} agent(s) | {new Date(wf.createdAt).toLocaleString()}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div
+                  onClick={() => onSelect(wf.id)}
+                  style={{ cursor: 'pointer', flex: 1 }}
+                >
+                  <strong>{wf.name}</strong>
+                  {' '}
+                  <StatusBadge status={wf.status} />
+                  {wf.projectName && (
+                    <span style={{ fontSize: '0.75rem', color: '#0891b2', marginLeft: 8 }}>
+                      {'📁'} {wf.projectName}
+                    </span>
+                  )}
+                  <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                    {wf.phases.length} phase(s) | {wf.phases.reduce((s, p) => s + p.agents.length, 0)} agent(s) | {new Date(wf.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(wf.id);
+                  }}
+                  title="View output"
+                  style={{
+                    background: 'none',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 4,
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    color: '#374151',
+                    marginLeft: 8,
+                  }}
+                >
+                  View Output
+                </button>
               </div>
             </div>
           ))}

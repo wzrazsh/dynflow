@@ -399,6 +399,7 @@ router.post('/:name/run', async (req, res) => {
     const run = repo.createWorkflowRun(
       sandboxResult.definition,
       `Project: ${name} v${version}`,
+      { projectName: name },
     );
 
     // --- Set up output context (resolve to absolute path for Docker volume mount) ---

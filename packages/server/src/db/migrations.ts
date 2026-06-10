@@ -211,6 +211,109 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 7,
+    name: 'add-dynamic-workflow-persistence',
+    up: (db) => {
+      const columns = db
+        .prepare('PRAGMA table_info(workflow_runs)')
+        .all() as Array<{ name: string }>;
+      const names = new Set(columns.map((column) => column.name));
+      if (!names.has('execution_model')) {
+        db.exec(
+          "ALTER TABLE workflow_runs ADD COLUMN execution_model TEXT NOT NULL DEFAULT 'static'",
+        );
+      }
+      if (!names.has('recovery_count')) {
+        db.exec(
+          'ALTER TABLE workflow_runs ADD COLUMN recovery_count INTEGER NOT NULL DEFAULT 0',
+        );
+      }
+      if (!names.has('script_hash')) {
+        db.exec('ALTER TABLE workflow_runs ADD COLUMN script_hash TEXT');
+      }
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS workflow_steps (
+          id TEXT PRIMARY KEY,
+          workflow_run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+          step_key TEXT NOT NULL,
+          parent_step_key TEXT,
+          type TEXT NOT NULL,
+          sequence INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'pending',
+          input_hash TEXT,
+          input_json TEXT,
+          output_json TEXT,
+          metadata_json TEXT,
+          error TEXT,
+          attempt INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          started_at TEXT,
+          completed_at TEXT,
+          UNIQUE(workflow_run_id, step_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflow_steps_run_status
+          ON workflow_steps(workflow_run_id, status);
+        CREATE INDEX IF NOT EXISTS idx_workflow_steps_run_parent
+          ON workflow_steps(workflow_run_id, parent_step_key);
+        CREATE INDEX IF NOT EXISTS idx_workflow_steps_run_sequence
+          ON workflow_steps(workflow_run_id, sequence);
+      `);
+    },
+    down: (db) => {
+      db.exec(`
+        DROP TABLE IF EXISTS workflow_steps;
+        ALTER TABLE workflow_runs DROP COLUMN script_hash;
+        ALTER TABLE workflow_runs DROP COLUMN recovery_count;
+        ALTER TABLE workflow_runs DROP COLUMN execution_model;
+      `);
+    },
+  },
+  {
+    version: 8,
+    name: 'add-project-name-to-workflow-runs',
+    up(db: Database) {
+      const cols = db
+        .prepare('PRAGMA table_info(workflow_runs)')
+        .all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'project_name')) {
+        db.exec(`ALTER TABLE workflow_runs ADD COLUMN project_name TEXT`);
+      }
+    },
+    down(db: Database) {
+      db.exec(`
+        CREATE TABLE workflow_runs_v8_backup (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          definition_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          template_id TEXT,
+          template_version INTEGER,
+          workspace_path TEXT,
+          workspace_git_url TEXT,
+          workspace_branch TEXT,
+          script TEXT,
+          runtime_config_json TEXT,
+          execution_model TEXT NOT NULL DEFAULT 'static',
+          recovery_count INTEGER NOT NULL DEFAULT 0,
+          script_hash TEXT
+        );
+        INSERT INTO workflow_runs_v8_backup SELECT
+          id, name, status, definition_json, created_at, updated_at,
+          template_id, template_version,
+          workspace_path, workspace_git_url, workspace_branch,
+          script, runtime_config_json,
+          execution_model, recovery_count, script_hash
+        FROM workflow_runs;
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_v8_backup RENAME TO workflow_runs;
+      `);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

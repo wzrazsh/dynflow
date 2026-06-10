@@ -28,8 +28,8 @@ describe('Migration v5: add script column to workflow_runs', () => {
     runMigrations();
     const status = getMigrationStatus();
 
-    // All 6 migrations recorded as applied
-    expect(status).toHaveLength(6);
+    // All 7 migrations recorded as applied
+    expect(status).toHaveLength(8);
     for (const s of status) {
       expect(s.applied).toBe(true);
     }
@@ -78,7 +78,7 @@ describe('Migration v5: add script column to workflow_runs', () => {
 
     // v5 still recorded as applied
     const status = getMigrationStatus();
-    expect(status).toHaveLength(6);
+    expect(status).toHaveLength(8);
     expect(status.find((s) => s.version === 5)?.applied).toBe(true);
   });
 });

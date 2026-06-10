@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { WorkflowRun, ApiResponse, WorkflowListResponse, WorkflowListFilters, WorkflowStatus } from '@dynflow/shared';
 import { RuntimeConfigSchema } from '@dynflow/shared';
-import { executeScript } from '../sandbox/isolated-runtime.js';
+import { normalizeWorkflowScript } from '../workflow/script-migration.js';
 import * as repo from '../db/repository.js';
 
 const router = Router();
@@ -9,27 +9,31 @@ const router = Router();
 // POST /api/workflows — Create workflow from JS script
 router.post('/', async (req, res) => {
   try {
-    const { name, script, workspace, runtimeConfig } = req.body;
+    const { name, script, workspace, runtimeConfig, projectName } = req.body;
     if (!name || !script) {
       return res.status(400).json({ success: false, error: 'Name and script are required' });
     }
 
-    // Run through sandbox
-    const result = await executeScript(script, { timeoutMs: 30000, memoryLimitMb: 128 });
-    if (!result.success) {
-      return res.status(400).json({ success: false, error: result.error, details: { line: result.line } });
+    const normalized = await normalizeWorkflowScript(script, name);
+    if (!normalized.success) {
+      return res.status(400).json({
+        success: false,
+        error: normalized.error,
+        details: { line: normalized.line },
+      });
     }
 
-    // Merge workspace from the request body into the parsed definition.
-    if (workspace && typeof workspace === 'object') {
-      result.definition!.workspace = workspace;
-    }
-
-    // Validate extracted definition (now including workspace)
-    const { validateWorkflowDefinition } = await import('@dynflow/shared');
-    const validation = validateWorkflowDefinition(result.definition!);
-    if (!validation.valid) {
-      return res.status(400).json({ success: false, error: 'Validation failed', details: validation.errors });
+    if (
+      workspace !== undefined &&
+      (!workspace ||
+        typeof workspace !== 'object' ||
+        (typeof workspace.path !== 'string' &&
+          typeof workspace.git !== 'string'))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspace must specify path or git',
+      });
     }
 
     // Validate optional runtimeConfig
@@ -45,9 +49,16 @@ router.post('/', async (req, res) => {
     }
 
     // Persist
-    const workflowRun = repo.createWorkflowRun(result.definition!, name, {
+    const definition = {
+      ...normalized.definition,
+      name,
+      ...(workspace ? { workspace } : {}),
+    };
+    const workflowRun = repo.createWorkflowRun(definition, name, {
       script,
+      executionModel: 'dynamic',
       runtimeConfig: runtimeConfig !== undefined ? RuntimeConfigSchema.parse(runtimeConfig) : undefined,
+      projectName: projectName || undefined,
     });
     res.status(201).json({ success: true, data: workflowRun } as ApiResponse<WorkflowRun>);
   } catch (error) {
@@ -64,6 +75,7 @@ router.get('/', (req, res) => {
   if (req.query.status) filters.status = req.query.status as WorkflowStatus;
   if (req.query.templateId) filters.templateId = req.query.templateId as string;
   if (req.query.sinceDays) filters.sinceDays = parseInt(req.query.sinceDays as string);
+  if (req.query.projectName) filters.projectName = req.query.projectName as string;
   const { runs, total } = repo.listWorkflowRuns(page, pageSize, filters);
   res.json({ success: true, data: runs, page, pageSize, total } as WorkflowListResponse);
 });

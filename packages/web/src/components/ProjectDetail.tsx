@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ProjectMeta, VersionMeta } from '@dynflow/shared';
+import type { ProjectMeta, VersionMeta, WorkflowRun } from '@dynflow/shared';
 import { fetchProject, fetchVersions, readFile, runProject, approveVersion } from '../api/projects';
+import { fetchWorkflows } from '../api/workflows';
 import StatusBadge from './StatusBadge';
 
 const TEXT_EXTENSIONS = new Set(['.html', '.css', '.js', '.ts', '.tsx', '.json', '.md', '.txt', '.yaml', '.yml', '.xml', '.svg']);
@@ -151,6 +152,8 @@ export default function ProjectDetail({ projectName, onBack, onError, onSuccess 
   const [prompt, setPrompt] = useState('');
   const [runLoading, setRunLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState<number | null>(null);
+  const [projectWorkflows, setProjectWorkflows] = useState<WorkflowRun[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
 
   const loadProject = useCallback(async () => {
     try {
@@ -163,6 +166,15 @@ export default function ProjectDetail({ projectName, onBack, onError, onSuccess 
       setError(null);
       if (!selectedVersion && vers.length > 0) {
         setSelectedVersion(vers[0].version);
+      }
+      setWorkflowsLoading(true);
+      try {
+        const wfResult = await fetchWorkflows(1, 50, { projectName: projectName });
+        setProjectWorkflows(wfResult.data ?? []);
+      } catch {
+        // Non-fatal
+      } finally {
+        setWorkflowsLoading(false);
       }
     } catch (e) {
       const msg = String(e);
@@ -682,6 +694,50 @@ export default function ProjectDetail({ projectName, onBack, onError, onSuccess 
           </button>
         </div>
       </div>
+          {/* Associated Workflows */}
+          <div style={{ marginTop: 24 }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 12 }}>
+              Associated Workflows
+            </h3>
+            {workflowsLoading ? (
+              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Loading...</div>
+            ) : projectWorkflows.length === 0 ? (
+              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                No workflows associated with this project.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {projectWorkflows.map((wf) => (
+                  <div
+                    key={wf.id}
+                    onClick={() => window.open(
+                      window.location.origin + '/workflows/' + wf.id,
+                      '_blank'
+                    )}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    <div>
+                      <strong>{wf.name}</strong>
+                      {' '}
+                      <StatusBadge status={wf.status} />
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                      {wf.phases.length} phase(s) | {new Date(wf.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
     </div>
   );
 }

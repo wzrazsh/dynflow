@@ -53,6 +53,8 @@ export interface WorkflowRun {
   templateId?: string;
   /** The template version that was active when the run was created. */
   templateVersion?: number;
+  /** Project this workflow run belongs to (if any). */
+  projectName?: string;
   /** Host path to the shared workspace directory for this run. */
   workspacePath?: string;
   /** Git URL the workspace was cloned from (if applicable). */
@@ -65,6 +67,14 @@ export interface WorkflowRun {
   runtimeConfig?: RuntimeConfig;
   /** Optional: the validated workflow definition for the run. */
   definition?: WorkflowDefinition;
+  /** Execution strategy used by this run. Legacy runs default to `static`. */
+  executionModel?: WorkflowExecutionModel;
+  /** Number of times dynamic execution has been recovered. */
+  recoveryCount?: number;
+  /** Stable digest of the dynamic script used to detect incompatible resumes. */
+  scriptHash?: string;
+  /** Durable steps recorded by a dynamic workflow. */
+  steps?: WorkflowStep[];
 }
 
 export interface PhaseRun {
@@ -96,10 +106,83 @@ export interface AgentRun {
   cuaApiUrl?: string;
 }
 
+export type WorkflowExecutionModel = 'static' | 'dynamic';
+
+export type DynamicWorkflowStatus =
+  | 'pending'
+  | 'running'
+  | 'recovering'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'stopped'
+  | 'interrupted';
+
+export type WorkflowStepType =
+  | 'phase'
+  | 'phase_start'
+  | 'phase_complete'
+  | 'agent'
+  | 'checkpoint'
+  | 'apply'
+  | 'log';
+
+export type WorkflowStepStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'cancelled';
+
+export interface WorkflowStep {
+  id: string;
+  workflowRunId: string;
+  /** Stable, user-provided key used to replay a dynamic script safely. */
+  key: string;
+  /** Alias used by the dynamic runtime's durable-step contract. */
+  stepKey: string;
+  parentKey?: string;
+  type: WorkflowStepType;
+  /** Alias used by the dynamic runtime's durable-step contract. */
+  kind: WorkflowStepType;
+  sequence: number;
+  status: WorkflowStepStatus;
+  inputHash?: string;
+  input?: unknown;
+  output?: unknown;
+  metadata?: Record<string, unknown>;
+  error?: string;
+  /** Number of successful claims made for this step. */
+  attempt: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface CreateWorkflowStepInput {
+  key: string;
+  parentKey?: string;
+  type: WorkflowStepType;
+  sequence?: number;
+  inputHash?: string;
+  input?: unknown;
+}
+
+export interface UpdateWorkflowStepInput {
+  status?: WorkflowStepStatus;
+  input?: unknown;
+  output?: unknown;
+  metadata?: Record<string, unknown>;
+  error?: string | null;
+}
+
 // Status enums as string unions
 export type WorkflowStatus =
   | 'pending'
   | 'running'
+  | 'recovering'
   | 'paused'
   | 'completed'
   | 'failed'
@@ -127,6 +210,7 @@ export interface SSEEvent {
   workflowId: string;
   phaseId?: string;
   agentId?: string;
+  stepId?: string;
   status?: string;
   timestamp: string;
   data?: unknown;
@@ -145,6 +229,13 @@ export type SSEEventType =
   | 'agent_completed'
   | 'agent_failed'
   | 'agent_timeout'
+  | 'step_created'
+  | 'step_started'
+  | 'step_completed'
+  | 'step_failed'
+  | 'apply_conflict'
+  | 'workflow_recovering'
+  | 'workflow_recovered'
   | 'heartbeat';
 
 // API types
@@ -168,6 +259,7 @@ export interface WorkflowListFilters {
   status?: WorkflowStatus;
   templateId?: string;
   sinceDays?: number;
+  projectName?: string;
 }
 
 export interface ValidationResult {

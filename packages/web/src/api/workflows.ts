@@ -14,6 +14,7 @@ export function fetchWorkflows(
   if (filters.status) params.set('status', filters.status);
   if (filters.templateId) params.set('templateId', filters.templateId);
   if (filters.sinceDays !== undefined) params.set('sinceDays', String(filters.sinceDays));
+  if (filters.projectName) params.set('projectName', filters.projectName);
   return get<WorkflowListResponse>(`/workflows?${params.toString()}`, signal);
 }
 
@@ -24,11 +25,12 @@ export function fetchWorkflow(id: string): Promise<ApiResponse<WorkflowRun>> {
 export function createWorkflow(
   name: string,
   script: string,
-  options?: { workspace?: WorkspaceConfig; runtimeConfig?: RuntimeConfig },
+  options?: { workspace?: WorkspaceConfig; runtimeConfig?: RuntimeConfig; projectName?: string },
 ): Promise<ApiResponse<WorkflowRun>> {
   const body: Record<string, unknown> = { name, script };
   if (options?.workspace) body.workspace = options.workspace;
   if (options?.runtimeConfig) body.runtimeConfig = options.runtimeConfig;
+  if (options?.projectName) body.projectName = options.projectName;
   return post<ApiResponse<WorkflowRun>>('/workflows', body);
 }
 
@@ -43,6 +45,12 @@ export function controlWorkflow(
 export interface OrchestrateResponse {
   success: boolean;
   data?: WorkflowDefinition;
+  script?: string;
+  estimates?: {
+    estimatedAgentCalls: number;
+    maxConcurrency: number;
+    writeStrategy: string;
+  };
   error?: string;
   rawResponse?: string;
 }

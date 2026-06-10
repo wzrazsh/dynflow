@@ -3,13 +3,19 @@ import { createWorkflow, orchestrateWorkflow } from '../api/workflows';
 import { fetchSystemInfo } from '../api/system';
 import type { WorkflowDefinition, RuntimeConfig, SystemInfo } from '@dynflow/shared';
 import RuntimeConfigForm from './RuntimeConfigForm';
+import { fetchProjects } from '../api/projects';
+import type { ProjectMeta } from '@dynflow/shared';
 
-const EXAMPLE_SCRIPT = `phase("Research", () => {
-  agent("researcher-1", "Research quantum computing impact on cryptography");
-  agent("researcher-2", "Research post-quantum cryptography standards");
-});
-phase("Synthesis", () => {
-  agent("synthesizer", "Synthesize findings into a report");
+const EXAMPLE_SCRIPT = `workflow("research", async () => {
+  const findings = await phase("research", async () =>
+    parallel(["quantum computing", "post-quantum standards"], topic =>
+      agent("research:" + topic, {
+        prompt: "Research " + topic,
+        mode: "read"
+      })
+    )
+  );
+  await checkpoint("findings", findings);
 });`;
 
 interface CreateWorkflowFormProps {
@@ -28,6 +34,8 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
   const [generatedScript, setGeneratedScript] = useState<string | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig>({});
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [selectedProject, setSelectedProject] = useState('');
 
   useEffect(() => {
     fetchSystemInfo()
@@ -39,6 +47,9 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
       .catch(() => {
         // Non-fatal — form still works without system info
       });
+    fetchProjects()
+      .then(list => setProjects(list))
+      .catch(() => {});
   }, []);
 
   async function handleSubmit(e: FormEvent) {
@@ -56,7 +67,10 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
     setError(null);
 
     try {
-      const result = await createWorkflow(name.trim(), script.trim(), { runtimeConfig });
+      const result = await createWorkflow(name.trim(), script.trim(), {
+        runtimeConfig,
+        projectName: selectedProject || undefined,
+      });
       if (result.success) {
         onCreated();
       } else {
@@ -73,21 +87,19 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
     function escape(s: string): string {
       return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
     }
-    const lines: string[] = [];
-    for (const phase of wf.phases) {
-      lines.push(`phase('${escape(phase.name)}', () => {`);
-      for (const agent of phase.agents) {
-        const prompt = agent.prompt ? `'${escape(agent.prompt)}'` : '';
-        if (agent.agentId && prompt) {
-          lines.push(`  agent('${escape(agent.name)}', { agentId: '${escape(agent.agentId)}', prompt: ${prompt} });`);
-        } else if (agent.agentId) {
-          lines.push(`  agent('${escape(agent.name)}', { agentId: '${escape(agent.agentId)}' });`);
-        } else {
-          lines.push(`  agent('${escape(agent.name)}', ${prompt || "''"});`);
-        }
-      }
-      lines.push('});');
-    }
+    const lines: string[] = [`workflow('${escape(wf.name)}', async () => {`];
+    wf.phases.forEach((phase, phaseIndex) => {
+      lines.push(`  await phase('phase:${phaseIndex}:${escape(phase.name)}', async () => {`);
+      lines.push('    await parallel([');
+      phase.agents.forEach((agent, agentIndex) => {
+        lines.push(
+          `      { id: 'agent:${phaseIndex}:${agentIndex}:${escape(agent.name)}', prompt: '${escape(agent.prompt || agent.name)}' },`,
+        );
+      });
+      lines.push(`    ], item => agent(item.id, { prompt: item.prompt, mode: 'read' }), { concurrency: ${phase.maxConcurrency ?? 16} });`);
+      lines.push('  });');
+    });
+    lines.push('});');
     return lines.join('\n');
   }
 
@@ -98,7 +110,7 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
     try {
       const result = await orchestrateWorkflow(userRequest.trim());
       if (result.success && result.data) {
-        const script = workflowDefToScript(result.data);
+        const script = result.script ?? workflowDefToScript(result.data);
         setGeneratedScript(script);
         if (!name.trim()) {
           setName(result.data.name);
@@ -221,6 +233,37 @@ export default function CreateWorkflowForm({ onBack, onCreated }: CreateWorkflow
           ) : (
             <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading available options...</span>
           )}
+        </div>
+
+        {/* Project Association */}
+        <div style={{ marginBottom: 16 }}>
+          <label
+            htmlFor="wf-project"
+            style={{ display: 'block', marginBottom: 6, fontWeight: 500, fontSize: '0.875rem' }}
+          >
+            Project (optional)
+          </label>
+          <select
+            id="wf-project"
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            disabled={loading || generating}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              fontSize: '0.875rem',
+              boxSizing: 'border-box',
+            }}
+          >
+            <option value="">-- No project --</option>
+            {projects.map((p) => (
+              <option key={p.projectName} value={p.projectName}>
+                {p.projectName}
+              </option>
+            ))}
+          </select>
         </div>
 
         {mode === 'manual' ? (

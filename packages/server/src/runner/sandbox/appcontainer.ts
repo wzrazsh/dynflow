@@ -275,13 +275,11 @@ export function createAppContainerProfile(
       try {
         const disposeHr = bindings.DeleteAppContainerProfile(options.name);
         if (disposeHr < 0) {
-          // eslint-disable-next-line no-console
           console.warn(
             `DeleteAppContainerProfile returned hr=0x${disposeHr.toString(16)} for "${options.name}".`,
           );
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.warn(`DeleteAppContainerProfile threw: ${String(err)}`);
       }
     },

@@ -274,7 +274,7 @@ const migrations: Migration[] = [
   {
     version: 8,
     name: 'add-project-name-to-workflow-runs',
-    up(db: Database) {
+    up(db: Database.Database) {
       const cols = db
         .prepare('PRAGMA table_info(workflow_runs)')
         .all() as Array<{ name: string }>;
@@ -282,7 +282,7 @@ const migrations: Migration[] = [
         db.exec(`ALTER TABLE workflow_runs ADD COLUMN project_name TEXT`);
       }
     },
-    down(db: Database) {
+    down(db: Database.Database) {
       db.exec(`
         CREATE TABLE workflow_runs_v8_backup (
           id TEXT PRIMARY KEY,

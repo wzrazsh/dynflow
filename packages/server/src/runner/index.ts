@@ -5,6 +5,7 @@ import { PiDirectRunner } from './pi-direct-runner.js';
 import { CuaPiRunner } from './cua-pi-runner.js';
 import { PiCuaNativeRunner } from './pi-cua-native-runner.js';
 import { WindowsNativeRunner } from './windows-native-runner.js';
+import { PiAppContainerRunner } from './pi-appcontainer-runner.js';
 import type { AgentRunner } from './types.js';
 import type { RuntimeConfig } from '@dynflow/shared';
 import { logger } from '../logger.js';
@@ -12,7 +13,7 @@ import { logger } from '../logger.js';
 /**
  * Union type of all supported runner identifiers.
  */
-export type RunnerType = 'cua' | 'cua-pi' | 'pi-cua-native' | 'pi-direct' | 'windows-native' | 'docker';
+export type RunnerType = 'cua' | 'cua-pi' | 'pi-cua-native' | 'pi-direct' | 'pi-appcontainer' | 'windows-native' | 'docker';
 
 /**
  * Get the appropriate agent runner.
@@ -29,17 +30,27 @@ export type RunnerType = 'cua' | 'cua-pi' | 'pi-cua-native' | 'pi-direct' | 'win
  *     directly, with custom Cua-backed `AgentTool[]` definitions. This
  *     is the programmatic, low-overhead path: no CLI fork, no JSONL
  *     parsing, full event-stream visibility.
+ *   - 'pi-direct': PiDirectRunner — runs the local `pi` CLI directly,
+ *     without any sandbox (host-privileged, opt-in only).
  *   - 'windows-native': WindowsNativeRunner — runs Pi under a Win32
  *     restricted-token + job-object sandbox via Koffi FFI. Windows-only.
  *     Auto-selected on Windows when Cua and CuaPi are unavailable.
+ *   - 'pi-appcontainer': PiAppContainerRunner — runs Pi under a Windows
+ *     AppContainer profile (per-run SID + folder) plus the same
+ *     restricted-token + job-object sandbox. Windows-only. Opt-in
+ *     (`DYNFLOW_RUNNER=pi-appcontainer`); auto-selected only when
+ *     `WindowsNativeRunner.isAvailable()` is false. Note: full
+ *     AppContainer process enforcement (SECURITY_CAPABILITIES
+ *     attribute) is a follow-on; today the profile is created
+ *     correctly but the actual process boundary is the same
+ *     restricted-token sandbox.
  *   - 'docker': legacy DockerAgentRunner / WslDockerAgentRunner — the
  *     pre-Cua OpenAI-only runner.
- *   - 'pi-direct': PiDirectRunner — runs the local `pi` CLI directly,
- *     without any sandbox (host-privileged, opt-in only).
  *
  * Backward compatibility: if `DYNFLOW_RUNNER` is unset, we try 'cua'
  * first (full Cua+Pi sandbox), then 'cua-pi' (Cua Computer Server path),
- * then 'windows-native' (Windows hosts only, no Docker), then fall
+ * then 'windows-native' (Windows hosts only, no Docker), then 'pi-appcontainer'
+ * (Windows hosts only, no Docker, no Koffi for restricted-token), then fall
  * back to 'docker'. `pi-cua-native` and `pi-direct` are explicit-only —
  * they require `DYNFLOW_RUNNER=pi-cua-native` or `DYNFLOW_RUNNER=pi-direct`
  * respectively. `windows-native` is auto-selected on Windows when
@@ -52,7 +63,6 @@ export function createAgentRunner(override?: RuntimeConfig): AgentRunner {
   if (override?.runner) {
     return selectRunnerByName(override.runner);
   }
-
   const explicit = process.env.DYNFLOW_RUNNER;
   if (explicit === 'docker') {
     logger.info('Runner: docker (legacy, DYNFLOW_RUNNER=docker)');
@@ -85,6 +95,16 @@ export function createAgentRunner(override?: RuntimeConfig): AgentRunner {
     }
     return new WindowsNativeRunner();
   }
+  if (explicit === 'pi-appcontainer') {
+    logger.info('Runner: pi-appcontainer (opt-in, DYNFLOW_RUNNER=pi-appcontainer)');
+    if (!PiAppContainerRunner.isAvailable()) {
+      throw new Error(
+        'pi-appcontainer runner requested but the host does not support it ' +
+        '(Windows + Koffi + userenv.dll AppContainer profile APIs required)',
+      );
+    }
+    return new PiAppContainerRunner();
+  }
   // Unset or unknown — try cua first, then cua-pi, then windows-native
   // (Windows hosts only), then docker. `pi-cua-native`, `pi-direct`, and
   // `windows-native` (when explicit) are NOT auto-selected — they
@@ -101,12 +121,16 @@ export function createAgentRunner(override?: RuntimeConfig): AgentRunner {
     logger.info('Runner: windows-native (auto-selected, Win32 sandbox)');
     return new WindowsNativeRunner();
   }
+  if (PiAppContainerRunner.isAvailable()) {
+    logger.info('Runner: pi-appcontainer (auto-selected, Windows AppContainer profile)');
+    return new PiAppContainerRunner();
+  }
   if (PiDirectRunner.isAvailable()) {
     logger.info(
       'Runner: local `pi` CLI detected. Set DYNFLOW_RUNNER=pi-direct to use it (no auto-fallback for security).',
     );
   }
-  logger.warn('Runner: cua + cua-pi + windows-native unavailable, falling back to docker');
+  logger.warn('Runner: cua + cua-pi + windows-native + pi-appcontainer unavailable, falling back to docker');
   return selectDockerRunner();
 }
 
@@ -139,9 +163,18 @@ function selectRunnerByName(runnerId: string): AgentRunner {
         );
       }
       return new WindowsNativeRunner();
+    case 'pi-appcontainer':
+      logger.info('Runner: pi-appcontainer (override)');
+      if (!PiAppContainerRunner.isAvailable()) {
+        throw new Error(
+          'pi-appcontainer runner requested but the host does not support it ' +
+          '(Windows + Koffi + userenv.dll AppContainer profile APIs required)',
+        );
+      }
+      return new PiAppContainerRunner();
     default:
       throw new Error(
-        `Unknown runner: "${runnerId}". Valid runners: cua, cua-pi, pi-cua-native, pi-direct, windows-native, docker`,
+        `Unknown runner: "${runnerId}". Valid runners: cua, cua-pi, pi-cua-native, pi-direct, pi-appcontainer, windows-native, docker`,
       );
   }
 }

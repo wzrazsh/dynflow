@@ -65,6 +65,7 @@ export * from './restricted-token.js';
 export * from './job-object.js';
 export * from './process.js';
 export * from './dacl.js';
+export * from './appcontainer.js';
 
 /** Sandbox mode. */
 export type SandboxMode = 'light' | 'strict';

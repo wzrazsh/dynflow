@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import type { WorkflowTemplate, ApiResponse, CreateTemplateRequest, UpdateTemplateRequest, ImportTemplateRequest } from '@dynflow/shared';
-import { validateWorkflowDefinition } from '@dynflow/shared';
 import * as templateRepo from '../db/template-repository.js';
 import * as repo from '../db/repository.js';
 import { getDb } from '../db/connection.js';
-import { executeScript } from '../sandbox/isolated-runtime.js';
+import { normalizeWorkflowScript } from '../workflow/script-migration.js';
 
 const router = Router();
 
@@ -370,27 +369,12 @@ router.post('/:id/run', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Template not found' });
     }
 
-    // Execute the template script through the sandbox
-    const result = await executeScript(template.script, {
-      timeoutMs: 30000,
-      memoryLimitMb: 128,
-    });
-
-    if (!result.success || !result.definition) {
+    const result = await normalizeWorkflowScript(template.script, template.name);
+    if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: result.error || 'Failed to parse script',
+        error: result.error,
         line: result.line,
-      });
-    }
-
-    // Validate the extracted workflow definition
-    const validation = validateWorkflowDefinition(result.definition);
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        error: 'Workflow validation failed',
-        errors: validation.errors,
       });
     }
 
@@ -400,6 +384,8 @@ router.post('/:id/run', async (req, res) => {
     const run = repo.createWorkflowRun(result.definition, template.name, {
       templateId: template.id,
       templateVersion: template.currentVersion,
+      script: template.script,
+      executionModel: 'dynamic',
     });
     return res.status(201).json({ success: true, data: run });
   } catch (error) {

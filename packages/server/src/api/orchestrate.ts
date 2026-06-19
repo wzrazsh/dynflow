@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { orchestrate, OrchestratorLLMError, OrchestratorValidationError } from '../orchestrator/index.js';
 import type { ApiResponse, WorkflowDefinition } from '@dynflow/shared';
+import { definitionToDynamicScript } from '../workflow/script-migration.js';
 
 const router = Router();
 
@@ -26,7 +27,34 @@ router.post('/', async (req, res) => {
       maxChoicesPerCategory,
     });
 
-    res.json({ success: true, data: result.workflow, rawResponse: result.rawResponse } as ApiResponse<WorkflowDefinition> & { rawResponse: string });
+    const script = definitionToDynamicScript(result.workflow);
+    const estimatedAgentCalls = result.workflow.phases.reduce(
+      (total, phase) => total + phase.agents.length,
+      0,
+    );
+    const maxConcurrency = Math.max(
+      1,
+      ...result.workflow.phases.map((phase) => phase.maxConcurrency ?? 16),
+    );
+    res.json({
+      success: true,
+      data: result.workflow,
+      script,
+      estimates: {
+        estimatedAgentCalls,
+        maxConcurrency,
+        writeStrategy: 'isolated-worktree',
+      },
+      rawResponse: result.rawResponse,
+    } as ApiResponse<WorkflowDefinition> & {
+      script: string;
+      estimates: {
+        estimatedAgentCalls: number;
+        maxConcurrency: number;
+        writeStrategy: string;
+      };
+      rawResponse: string;
+    });
   } catch (error) {
     if (error instanceof OrchestratorLLMError) {
       return res.status(502).json({ success: false, error: error.message, statusCode: error.statusCode });

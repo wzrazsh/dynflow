@@ -3,6 +3,14 @@ import * as repo from '../db/repository.js';
 import * as templateRepo from '../db/template-repository.js';
 import { WorkflowFSM } from '../workflow/state-machine.js';
 import { WorkflowRuntime } from '../workflow/runtime.js';
+import { DynamicWorkflowRuntime, WorkflowPausedError } from '../workflow/dynamic-runtime.js';
+import { RepositoryStepStore } from '../workflow/repository-step-store.js';
+import { prepareWorkflowWorkspace } from '../workflow/workspace-preparer.js';
+import { normalizeWorkflowScript } from '../workflow/script-migration.js';
+import {
+  activeRuntimes,
+  type ActiveRuntime,
+} from '../workflow/active-runtime-registry.js';
 import type { WorkflowExecuteOptions } from '../workflow/runtime.js';
 import { ProjectService } from '../project/project-service.js';
 import { createAgentRunner } from '../runner/index.js';
@@ -21,8 +29,6 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // In-memory registry of active runtime instances (for stop/abort)
 // ---------------------------------------------------------------------------
-const activeRuntimes = new Map<string, WorkflowRuntime>();
-
 // ---------------------------------------------------------------------------
 // ProjectService singleton for output directory management
 // ---------------------------------------------------------------------------
@@ -47,13 +53,13 @@ function isRunnerAvailable(runnerId: string): boolean {
  * When provider is specified, returns its key or null (fail fast, no silent fallback).
  * When provider is undefined, falls back through OPENCODE -> OPENAI -> ANTHROPIC.
  */
-function resolveApiKey(provider?: string): string | null {
+export function resolveApiKey(provider?: string): string | null {
   const envMap: Record<string, string | undefined> = {
     opencode: process.env.OPENCODE_API_KEY,
     openai: process.env.OPENAI_API_KEY,
     anthropic: process.env.ANTHROPIC_API_KEY,
+    minimax: process.env.MINIMAX_CN_API_KEY || process.env.MINIMAX_API_KEY,
   };
-
   if (provider) {
     const key = envMap[provider];
     if (!key) return null; // Fail fast — don't fall back to a different provider
@@ -109,7 +115,8 @@ router.post('/:id/start', (req, res) => {
   }
 
   // Resolve API key with provider awareness
-  const apiKey = resolveApiKey(overrideConfig?.llmProvider);
+  const effectiveConfig = overrideConfig ?? run.runtimeConfig;
+  const apiKey = resolveApiKey(effectiveConfig?.llmProvider);
   if (!apiKey) {
     const missing = overrideConfig?.llmProvider 
       ? `${overrideConfig.llmProvider.toUpperCase()}_API_KEY is not set`
@@ -125,12 +132,25 @@ router.post('/:id/start', (req, res) => {
     return res.status(409).json({ success: false, error: 'Workflow is already running or in an invalid state.' });
   }
 
-  const runtime = new WorkflowRuntime(
-    createAgentRunner(overrideConfig),
-    StreamManager.getInstance(),
-    projectService,
-  );
-  activeRuntimes.set(req.params.id, runtime);
+  const controller = new AbortController();
+  const runner = createAgentRunner(effectiveConfig);
+  const runtime =
+    run.executionModel === 'dynamic'
+      ? new DynamicWorkflowRuntime(
+          runner,
+          new RepositoryStepStore(),
+          StreamManager.getInstance(),
+        )
+      : new WorkflowRuntime(
+          runner,
+          StreamManager.getInstance(),
+          projectService,
+        );
+  const activeRuntime: ActiveRuntime =
+    run.executionModel === 'dynamic'
+      ? { abort: () => controller.abort() }
+      : runtime as WorkflowRuntime;
+  activeRuntimes.set(req.params.id, activeRuntime);
 
   // Extract optional project context from the request body
   // Use optional chaining to handle requests with no body/payload
@@ -145,8 +165,32 @@ router.post('/:id/start', (req, res) => {
 
   setImmediate(async () => {
     try {
-      await runtime.execute(run.id, apiKey, optsToPass);
+      if (runtime instanceof DynamicWorkflowRuntime) {
+        const latest = repo.getWorkflowRun(run.id);
+        if (!latest?.script) throw new Error('Dynamic workflow script is missing');
+        const normalized = await normalizeWorkflowScript(latest.script, latest.name);
+        if (!normalized.success) throw new Error(normalized.error);
+        const workspacePath = await prepareWorkflowWorkspace(latest);
+        await runtime.execute({
+          workflowRunId: run.id,
+          script: normalized.script,
+          apiKey,
+          workspacePath,
+          runtimeConfig: latest.runtimeConfig,
+          signal: controller.signal,
+        });
+        repo.updateWorkflowStatus(run.id, 'completed');
+        StreamManager.getInstance().emit(run.id, {
+          type: 'workflow_completed',
+          workflowId: run.id,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        await runtime.execute(run.id, apiKey, optsToPass);
+      }
     } catch (err: unknown) {
+      if (err instanceof WorkflowPausedError) return;
+      if (repo.getWorkflowRun(run.id)?.status === 'stopped') return;
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
         type: 'workflow_failed',
@@ -177,7 +221,9 @@ router.post('/:id/pause', (req, res) => {
   }
 
   // Atomically transition from 'running' to 'paused'
-  const claimed = repo.transitionWorkflowStatus(run.id, 'running', 'paused');
+  const claimed =
+    repo.transitionWorkflowStatus(run.id, 'running', 'paused') ||
+    repo.transitionWorkflowStatus(run.id, 'recovering', 'paused');
   if (!claimed) {
     return res.status(409).json({ success: false, error: 'Workflow is not in a running state.' });
   }
@@ -215,7 +261,8 @@ router.post('/:id/resume', (req, res) => {
   }
 
   // Resolve API key with provider awareness
-  const apiKey = resolveApiKey(resumeOverrideConfig?.llmProvider);
+  const effectiveResumeConfig = resumeOverrideConfig ?? run.runtimeConfig;
+  const apiKey = resolveApiKey(effectiveResumeConfig?.llmProvider);
   if (!apiKey) {
     const missing = resumeOverrideConfig?.llmProvider 
       ? `${resumeOverrideConfig.llmProvider.toUpperCase()}_API_KEY is not set`
@@ -239,12 +286,26 @@ router.post('/:id/resume', (req, res) => {
   // Respond immediately, then start execution in the next tick
   res.json({ success: true, data: { status: 'running' } });
 
-  const runtime = new WorkflowRuntime(
-    createAgentRunner(resumeOverrideConfig),
-    StreamManager.getInstance(),
-    projectService,
+  const controller = new AbortController();
+  const runner = createAgentRunner(effectiveResumeConfig);
+  const runtime =
+    run.executionModel === 'dynamic'
+      ? new DynamicWorkflowRuntime(
+          runner,
+          new RepositoryStepStore(),
+          StreamManager.getInstance(),
+        )
+      : new WorkflowRuntime(
+          runner,
+          StreamManager.getInstance(),
+          projectService,
+        );
+  activeRuntimes.set(
+    run.id,
+    run.executionModel === 'dynamic'
+      ? { abort: () => controller.abort() }
+      : runtime as WorkflowRuntime,
   );
-  activeRuntimes.set(run.id, runtime);
 
   // Extract optional project context from the request body
   // Use optional chaining to handle requests with no body/payload
@@ -256,8 +317,33 @@ router.post('/:id/resume', (req, res) => {
 
   setImmediate(async () => {
     try {
-      await runtime.execute(run.id, apiKey, optsToPass);
+      if (runtime instanceof DynamicWorkflowRuntime) {
+        repo.resetRunningWorkflowSteps(run.id);
+        const latest = repo.getWorkflowRun(run.id);
+        if (!latest?.script) throw new Error('Dynamic workflow script is missing');
+        const normalized = await normalizeWorkflowScript(latest.script, latest.name);
+        if (!normalized.success) throw new Error(normalized.error);
+        const workspacePath = await prepareWorkflowWorkspace(latest);
+        await runtime.execute({
+          workflowRunId: run.id,
+          script: normalized.script,
+          apiKey,
+          workspacePath,
+          runtimeConfig: latest.runtimeConfig,
+          signal: controller.signal,
+        });
+        repo.updateWorkflowStatus(run.id, 'completed');
+        StreamManager.getInstance().emit(run.id, {
+          type: 'workflow_completed',
+          workflowId: run.id,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        await runtime.execute(run.id, apiKey, optsToPass);
+      }
     } catch (err: unknown) {
+      if (err instanceof WorkflowPausedError) return;
+      if (repo.getWorkflowRun(run.id)?.status === 'stopped') return;
       repo.updateWorkflowStatus(run.id, 'failed');
       StreamManager.getInstance().emit(run.id, {
         type: 'workflow_failed',
@@ -290,6 +376,7 @@ router.post('/:id/stop', (req, res) => {
 
   // Atomically transition from 'running' or 'paused' to 'stopped'
   const claimed = repo.transitionWorkflowStatus(run.id, 'running', 'stopped')
+    || repo.transitionWorkflowStatus(run.id, 'recovering', 'stopped')
     || repo.transitionWorkflowStatus(run.id, 'paused', 'stopped');
   if (!claimed) {
     return res.status(409).json({ success: false, error: 'Workflow is not running or paused.' });

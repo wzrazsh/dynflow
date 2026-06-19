@@ -6,6 +6,8 @@ import { useSSE } from '../hooks/useSSE';
 import StatusBadge from './StatusBadge';
 import RuntimeConfigChips from './RuntimeConfigChips';
 import StartRunDialog from './StartRunDialog';
+import DynamicStepTimeline from './DynamicStepTimeline';
+import type { WorkflowRunWithDynamicSteps } from '../types/dynamic-workflow';
 
 interface WorkflowDetailProps {
   workflowId: string;
@@ -177,6 +179,10 @@ export default function WorkflowDetail({
     return null;
   }
 
+  const workflowWithSteps = workflow as WorkflowRunWithDynamicSteps;
+  const showDynamicSteps =
+    workflowWithSteps.executionModel === 'dynamic' &&
+    !!workflowWithSteps.steps?.length;
   const isRunning = workflow.status === 'running';
   const isPaused = workflow.status === 'paused';
   const isPending = workflow.status === 'pending';
@@ -339,7 +345,10 @@ export default function WorkflowDetail({
         </div>
       )}
 
-      {/* Phase list */}
+      {showDynamicSteps ? (
+        <DynamicStepTimeline steps={workflowWithSteps.steps!} />
+      ) : (
+      /* Phase list */
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
         <div
           style={{
@@ -541,6 +550,7 @@ export default function WorkflowDetail({
           );
         })}
       </div>
+      )}
       </div>
 
     <StartRunDialog

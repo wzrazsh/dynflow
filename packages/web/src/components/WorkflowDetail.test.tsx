@@ -72,6 +72,38 @@ const mockWorkflow = {
 const runningWorkflow = { ...mockWorkflow, status: 'running' };
 const pausedWorkflow = { ...mockWorkflow, status: 'paused' };
 const completedWorkflow = { ...mockWorkflow, status: 'completed' };
+const dynamicWorkflow = {
+  ...mockWorkflow,
+  executionModel: 'dynamic',
+  steps: [
+    {
+      id: 'step-plan',
+      key: 'plan',
+      name: 'Plan changes',
+      kind: 'agent',
+      status: 'completed',
+      attempt: 1,
+      replayed: false,
+      output: 'Implementation plan ready',
+    },
+    {
+      id: 'step-implement',
+      key: 'implement',
+      name: 'Implement feature',
+      kind: 'agent',
+      status: 'failed',
+      parentKey: 'plan',
+      attempt: 2,
+      metadata: {
+        replayed: true,
+        worktree: 'E:\\workspace\\dynflow\\.dynflow-worktrees\\wf-1\\implement',
+        resultCommit: 'abc123def456',
+      },
+      error: 'Tests failed',
+      output: 'Updated the workflow UI',
+    },
+  ],
+};
 
 describe('WorkflowDetail', () => {
   const onBack = vi.fn();
@@ -96,6 +128,42 @@ describe('WorkflowDetail', () => {
     await waitFor(() => expect(screen.getByText('Test Workflow')).toBeDefined());
     expect(screen.getAllByText('pending').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Phases (2)')).toBeDefined();
+  });
+
+  it('renders dynamic workflow steps as a tree with execution details', async () => {
+    vi.mocked(fetchWorkflow).mockResolvedValue({
+      success: true,
+      data: dynamicWorkflow,
+    });
+
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+
+    await waitFor(() => expect(screen.getByText('Steps (2)')).toBeDefined());
+    expect(screen.queryByText('Phases (2)')).toBeNull();
+    expect(screen.getByText('Plan changes')).toBeDefined();
+    expect(screen.getByText('Implement feature')).toBeDefined();
+    expect(screen.getAllByText('agent')).toHaveLength(2);
+    expect(screen.getByText('Attempt 2')).toBeDefined();
+    expect(screen.getByText('Replayed')).toBeDefined();
+    expect(screen.getByText(/\.dynflow-worktrees\\wf-1\\implement/)).toBeDefined();
+    expect(screen.getByText('abc123def456')).toBeDefined();
+    expect(screen.getByText('Tests failed')).toBeDefined();
+    expect(screen.getByText('Updated the workflow UI')).toBeDefined();
+
+    const child = screen.getByTestId('dynamic-step-step-implement');
+    expect(child.style.marginLeft).toBe('28px');
+  });
+
+  it('keeps the phases UI for dynamic workflows without steps', async () => {
+    vi.mocked(fetchWorkflow).mockResolvedValue({
+      success: true,
+      data: { ...mockWorkflow, executionModel: 'dynamic', steps: [] },
+    });
+
+    render(<WorkflowDetail workflowId="wf-1" onBack={onBack} />);
+
+    await waitFor(() => expect(screen.getByText('Phases (2)')).toBeDefined());
+    expect(screen.queryByText('Steps (0)')).toBeNull();
   });
 
   it('shows Start button for pending workflow', async () => {

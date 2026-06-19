@@ -86,6 +86,12 @@ export function useSSE(workflowId: string | null) {
       'workflow_paused',
       'workflow_stopped',
       'workflow_status',
+      'workflow_recovering',
+      'step_created',
+      'step_started',
+      'step_completed',
+      'step_failed',
+      'apply_conflict',
     ] as const;
 
     for (const type of types) {

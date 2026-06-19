@@ -84,6 +84,29 @@ describe('useSSE', () => {
     expect(result.current.events[0].type).toBe('agent_started');
   });
 
+  it.each([
+    'workflow_recovering',
+    'step_created',
+    'step_started',
+    'step_completed',
+    'step_failed',
+    'apply_conflict',
+  ])('receives the %s event', async (type) => {
+    const { result } = renderHook(() => useSSE('wf-1'));
+    await waitFor(() => expect(mockEventSource.addEventListener).toHaveBeenCalled());
+
+    act(() => {
+      mockEventSource.mockMessage(type, {
+        workflowId: 'wf-1',
+        stepId: 'step-1',
+        timestamp: '2024-01-01T00:00:00Z',
+      });
+    });
+
+    expect(result.current.events).toHaveLength(1);
+    expect(result.current.events[0].type).toBe(type);
+  });
+
   it('closes connection on unmount', () => {
     const { unmount } = renderHook(() => useSSE('wf-1'));
     unmount();

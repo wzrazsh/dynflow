@@ -49,6 +49,20 @@ Thumbs.db
 # AI / IDE agent caches
 .trae/
 
+# Local QA / MCP profile dirs (per-host browser + MCP state)
+.browser-profile-qa/
+.playwright-mcp/
+.omp/
+
+# Per-server runtime output (workflow artifacts, logs)
+packages/server/outputs/
+
+# DynFlow per-run worktrees
+.dynflow-worktrees/
+
+# Local-only scratch / mirror-test scripts at repo root
+/test-mirrors.ps1
+
 # Editor & OS backups
 *.bak
 *.bak.*

@@ -17,6 +17,8 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "npm -w @dynflow/server run dev",
+    "dev:web": "npm -w @dynflow/web run dev",
     "build": "tsc -b",
     "test": "vitest run",
     "lint": "eslint . --ext .ts,.tsx"

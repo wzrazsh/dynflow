@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "isolated-vm": "^6.1.2",
     "koffi": "^3.0.2",
+    "quickjs-emscripten": "^0.32.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

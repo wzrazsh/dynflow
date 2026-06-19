@@ -2,6 +2,7 @@ import { initSchema } from '../db/schema.js';
 import { runMigrations, getMigrationStatus } from '../db/migrations.js';
 import { markOrphanRunsAsInterrupted } from '../db/repository.js';
 import { logger } from '../logger.js';
+import { recoverDynamicWorkflows } from '../workflow/recovery.js';
 
 /**
  * Initialize the database: create tables, run pending migrations,
@@ -28,5 +29,6 @@ export function initializeDatabase(): number {
   if (orphanCount > 0) {
     logger.info({ count: orphanCount }, 'Converted orphan running workflows to interrupted');
   }
+  recoverDynamicWorkflows();
   return orphanCount;
 }

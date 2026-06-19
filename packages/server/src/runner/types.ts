@@ -23,6 +23,8 @@ export interface AgentRunConfig {
   llmProvider?: string;
   /** Legacy alias for llmProvider, used by PiDirectRunner's buildChildEnv. */
   provider?: string;
+  /** Per-invocation cancellation signal used by the dynamic runtime. */
+  signal?: AbortSignal;
 }
 
 export interface AgentResult {

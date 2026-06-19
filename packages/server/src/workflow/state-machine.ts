@@ -20,6 +20,13 @@ const TRANSITIONS: Record<WorkflowStatus, Partial<Record<WorkflowAction, Workflo
     stop: 'stopped',
     interrupt: 'interrupted',
   },
+  recovering: {
+    pause: 'paused',
+    complete: 'completed',
+    fail: 'failed',
+    stop: 'stopped',
+    interrupt: 'interrupted',
+  },
   paused: {
     resume: 'running',
     stop: 'stopped',

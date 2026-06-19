@@ -86,7 +86,9 @@ describe('DockerAgentRunner', () => {
     it('returns true when docker info succeeds', () => {
       execSyncMock.mockReturnValue(Buffer.from(''));
       expect(DockerAgentRunner.isAvailable()).toBe(true);
-      expect(execSyncMock).toHaveBeenCalledWith('docker info', { stdio: 'ignore' });
+      // The probe now passes a `timeout` to bound a hung Docker daemon so
+      // callers like `/api/system/info` stay responsive.
+      expect(execSyncMock).toHaveBeenCalledWith('docker info', { stdio: 'ignore', timeout: 3000 });
     });
 
     it('returns false when docker info fails', () => {

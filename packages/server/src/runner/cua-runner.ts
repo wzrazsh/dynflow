@@ -6,6 +6,7 @@ import type { AgentRunConfig, AgentResult, AgentRunner } from './types.js';
 import { parsePiJsonLines } from './pi-output-parser.js';
 import { scanWorkspaceChanges } from './workspace-scanner.js';
 import { buildPiPrompt } from './prompt-builder.js';
+import { probeDockerAvailability } from './docker-probe.js';
 
 const execAsync = promisify(exec);
 
@@ -56,12 +57,10 @@ export class CuaAgentRunner implements AgentRunner {
   }
 
   static isAvailable(): boolean {
-    try {
-      execSync('docker info', { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
+    // `docker info` can hang indefinitely when the Docker daemon is
+    // unresponsive; the probe helper bounds it to a short timeout so
+    // `/api/system/info` never blocks longer than DOCKER_PROBE_TIMEOUT_MS.
+    return probeDockerAvailability('docker info');
   }
 
   async run(config: AgentRunConfig): Promise<AgentResult> {
@@ -172,6 +171,11 @@ export class CuaAgentRunner implements AgentRunner {
       `--volume ${shellQuote(config.workspacePath)}:${config.workspaceMount} ` +
       `-e ANTHROPIC_API_KEY="${config.apiKey ?? process.env.ANTHROPIC_API_KEY ?? ''}" ` +
       `-e OPENAI_API_KEY="${config.apiKey ?? process.env.OPENAI_API_KEY ?? ''}" ` +
+      // OpenAI-compatible providers (openai, minimax, azure-openai-responses)
+      // read OPENAI_BASE_URL to find their endpoint; forward whatever the
+      // host has configured. An empty value is fine — those providers fall
+      // back to their built-in default URL.
+      `-e OPENAI_BASE_URL="${process.env.OPENAI_BASE_URL ?? ''}" ` +
       `-e PI_CWD=${config.workspaceMount} ` +
       `${this.image}`;
     const { stdout } = await execAsync(runCmd);

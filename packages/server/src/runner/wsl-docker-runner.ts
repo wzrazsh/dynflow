@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentRunConfig, AgentResult, AgentRunner } from './types.js';
+import { probeDockerAvailability } from './docker-probe.js';
 
 const execAsync = promisify(exec);
 
@@ -57,12 +58,10 @@ export class WslDockerAgentRunner implements AgentRunner {
    * Returns `true` if `docker info` succeeds in WSL, `false` otherwise.
    */
   static isAvailable(wslDistro = 'Ubuntu-24.04'): boolean {
-    try {
-      execSync(`wsl -d ${wslDistro} -- docker info`, { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
+    // `wsl -d <distro> -- docker info` can hang when WSL itself or the
+    // Docker daemon inside the distro is unresponsive. Bound the probe
+    // so callers like `/api/system/info` stay responsive.
+    return probeDockerAvailability(`wsl -d ${wslDistro} -- docker info`);
   }
 
   /**

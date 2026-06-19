@@ -1,6 +1,7 @@
 import { exec, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { AgentRunConfig, AgentResult, AgentRunner } from './types.js';
+import { probeDockerAvailability } from './docker-probe.js';
 
 const execAsync = promisify(exec);
 
@@ -16,12 +17,9 @@ export class DockerAgentRunner implements AgentRunner {
    * Returns `true` if `docker info` succeeds, `false` otherwise.
    */
   static isAvailable(): boolean {
-    try {
-      execSync('docker info', { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
+    // Bound the `docker info` probe so a hung Docker daemon does not
+    // wedge callers like `/api/system/info`.
+    return probeDockerAvailability('docker info');
   }
 
   async run(config: AgentRunConfig): Promise<AgentResult> {

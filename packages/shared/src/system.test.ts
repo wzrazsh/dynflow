@@ -133,9 +133,10 @@ describe('SystemInfoSchema', () => {
 });
 
 describe('PROVIDER_MODELS', () => {
-  it('has opencode, openai, and anthropic providers', () => {
+  it('has opencode, openai, minimax, and anthropic providers', () => {
     expect(Object.keys(PROVIDER_MODELS).sort()).toEqual([
       'anthropic',
+      'minimax',
       'openai',
       'opencode',
     ]);
@@ -203,9 +204,9 @@ describe('RUNNER_INFO', () => {
 });
 
 describe('PROVIDER_INFO', () => {
-  it('has opencode, openai, and anthropic providers', () => {
+  it('has opencode, openai, minimax, and anthropic providers', () => {
     const ids = PROVIDER_INFO.map((p) => p.id).sort();
-    expect(ids).toEqual(['anthropic', 'openai', 'opencode']);
+    expect(ids).toEqual(['anthropic', 'minimax', 'openai', 'opencode']);
   });
 
   it('all providers are marked as available', () => {

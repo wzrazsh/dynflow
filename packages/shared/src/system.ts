@@ -56,6 +56,11 @@ export const SystemInfoSchema = z.object({
 export const PROVIDER_MODELS: Record<string, string[]> = {
   opencode: ['mimo-v2.5-free', 'kimi-k2', 'gpt-4o-mini'],
   openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  // `minimax` is an OpenAI-compatible endpoint (id 'minimax') that reuses
+  // OPENAI_API_KEY + OPENAI_BASE_URL. The model list intentionally mirrors
+  // the provider's own naming; the underlying `pi` CLI receives the id
+  // verbatim via --model.
+  minimax: ['MiniMax-M3', 'minimax-m2'],
   anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229'],
 };
 
@@ -65,6 +70,8 @@ export const RUNNER_INFO: RunnerInfo[] = [
   { id: 'cua-pi', label: 'Cua Pi (Internal)', description: 'Pi agent running inside Cua container (internal)', available: true },
   { id: 'pi-cua-native', label: 'Pi Cua Native', description: 'Pi agent with native Cua integration', available: true },
   { id: 'pi-direct', label: 'Pi Direct', description: 'Direct Pi agent (no sandbox)', available: true },
+  { id: 'pi-appcontainer', label: 'Pi AppContainer', description: 'Pi agent under a Windows AppContainer profile (Win32 + Koffi required)', available: true },
+  { id: 'windows-native', label: 'Windows Native', description: 'Restricted Token + Job Object sandbox (Windows)', available: true },
   { id: 'docker', label: 'Docker (Legacy)', description: 'Legacy OpenAI-only Docker agent', available: true },
 ];
 
@@ -72,6 +79,7 @@ export const RUNNER_INFO: RunnerInfo[] = [
 export const PROVIDER_INFO: ProviderInfo[] = [
   { id: 'opencode', label: 'OpenCode', available: true },
   { id: 'openai', label: 'OpenAI', available: true },
+  { id: 'minimax', label: 'minimax', available: true },
   { id: 'anthropic', label: 'Anthropic', available: true },
 ];
 

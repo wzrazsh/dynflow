@@ -18,7 +18,7 @@ npm run dev:server
 npm run dev:web
 ```
 
-The backend listens on `3001` by default and the Vite app listens on `5173`.
+The backend listens on `13001` by default and the Vite app listens on `15173`.
 
 ## Contribution Guidelines
 

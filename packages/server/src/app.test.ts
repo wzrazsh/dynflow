@@ -20,7 +20,7 @@ describe('GET /api/health', () => {
   it('handles CORS headers', async () => {
     const res = await request(app)
       .get('/api/health')
-      .set('Origin', 'http://localhost:5173')
+      .set('Origin', 'http://localhost:15173')
     expect(res.headers['access-control-allow-origin']).toBeDefined()
   })
 
@@ -34,8 +34,8 @@ describe('GET /api/health', () => {
   it('allows 127.0.0.1 CORS origin (default)', async () => {
     const res = await request(app)
       .get('/api/health')
-      .set('Origin', 'http://127.0.0.1:5173')
-    expect(res.headers['access-control-allow-origin']).toBe('http://127.0.0.1:5173')
+      .set('Origin', 'http://127.0.0.1:15173')
+    expect(res.headers['access-control-allow-origin']).toBe('http://127.0.0.1:15173')
   })
 
   it('allows custom origin when DYNFLOW_CORS_ORIGINS is set', async () => {

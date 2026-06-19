@@ -18,7 +18,7 @@ export function createApp() {
   const app = express()
   const allowedOrigins = process.env.DYNFLOW_CORS_ORIGINS
     ? process.env.DYNFLOW_CORS_ORIGINS.split(',').map(s => s.trim())
-    : ['http://localhost:5173', 'http://127.0.0.1:5173'];
+    : ['http://localhost:15173', 'http://127.0.0.1:15173'];
 
   app.use(cors({
     origin: (origin, callback) => {
@@ -36,9 +36,9 @@ export function createApp() {
   })
 
   // Order matters:
-  //   1. CRUD routes first  â€” POST /, GET /, GET /:id, DELETE /:id
-  //   2. SSE  stream        â€” GET /:id/stream  (more specific than /:id)
-  //   3. Control actions    â€” POST /:id/start, POST /:id/pause, â€¦
+  //   1. CRUD routes first  â€?POST /, GET /, GET /:id, DELETE /:id
+  //   2. SSE  stream        â€?GET /:id/stream  (more specific than /:id)
+  //   3. Control actions    â€?POST /:id/start, POST /:id/pause, â€?
   app.use('/api/workflows', workflowCrudRoutes)
   app.use('/api/workflows', sseRoutes)
   app.use('/api/workflows', workflowControlRoutes)

@@ -98,11 +98,16 @@ export class PiDirectRunner implements AgentRunner {
     if (process.env.SYSTEMROOT) env.SYSTEMROOT = process.env.SYSTEMROOT;
     if (process.env.TEMP) env.TEMP = process.env.TEMP;
     if (process.env.LANG) env.LANG = process.env.LANG;
+    // OpenAI-compatible providers (openai, minimax, azure-openai-responses)
+    // honor an alternate `OPENAI_BASE_URL`; pass it through so a configured
+    // proxy / private endpoint reaches the child `pi` process.
+    if (process.env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
     if (config.apiKey) {
       const provider = config.llmProvider ?? this.provider;
       switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
+        case 'minimax':
           env.OPENAI_API_KEY = config.apiKey;
           break;
         case 'anthropic':
@@ -210,6 +215,10 @@ export class PiDirectRunner implements AgentRunner {
 
     // Register the child so stop() can terminate it.
     this.processRegistry.set(containerId, child);
+    const abortFromCaller = () => {
+      void killProcessTree(child);
+    };
+    config.signal?.addEventListener('abort', abortFromCaller, { once: true });
 
     // Buffer stdout/stderr with a hard cap. Once either stream exceeds the
     // cap, kill the child — a single `>` check + a `truncated` flag handles
@@ -285,6 +294,7 @@ export class PiDirectRunner implements AgentRunner {
       child.on('error', () => done());
     });
     clearTimeout(timeoutHandle);
+    config.signal?.removeEventListener('abort', abortFromCaller);
     this.processRegistry.delete(containerId);
 
     // Best-effort cleanup: delete the per-agent prompt file we wrote so it

@@ -862,7 +862,9 @@ When the task involves UI / web / game output, verify it by:
     switch (p) {
       case 'openai':
       case 'azure-openai-responses':
-        return process.env.OPENAI_API_KEY;
+      case 'minimax':
+      case 'minimax-cn':
+        return process.env.MINIMAX_CN_API_KEY || process.env.MINIMAX_API_KEY || process.env.OPENAI_API_KEY;
       case 'anthropic':
         return process.env.ANTHROPIC_API_KEY;
       case 'opencode':

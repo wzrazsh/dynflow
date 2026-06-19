@@ -157,12 +157,19 @@ export class CuaPiRunner implements AgentRunner {
     if (process.env.SYSTEMROOT) env.SYSTEMROOT = process.env.SYSTEMROOT;
     if (process.env.TEMP) env.TEMP = process.env.TEMP;
     if (process.env.LANG) env.LANG = process.env.LANG;
+    // OpenAI-compatible providers (openai, minimax, azure-openai-responses)
+    // honor an alternate `OPENAI_BASE_URL`; pass it through so a configured
+    // proxy / private endpoint reaches the child `pi` process.
+    if (process.env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
     if (config.apiKey) {
       const provider = config.llmProvider ?? this.provider;
       switch (provider) {
         case 'openai':
         case 'azure-openai-responses':
+        case 'minimax':
+        case 'minimax-cn':
           env.OPENAI_API_KEY = config.apiKey;
+          if (process.env.MINIMAX_CN_API_KEY) env.MINIMAX_CN_API_KEY = process.env.MINIMAX_CN_API_KEY;
           break;
         case 'anthropic':
           env.ANTHROPIC_API_KEY = config.apiKey;
@@ -302,9 +309,11 @@ the result before declaring success.
     await writeFile(promptFile, promptText, 'utf-8');
 
     const shortInstruction = `Read the instructions in ${promptFile} and execute them. The Cua Computer Server is at ${this.cuaServerUrl}.`;
-
+    
+    const rawProvider = config.llmProvider ?? this.provider;
+    // minimap uses China region; map to minimax-cn for pi
+    const effectiveProvider = rawProvider === 'minimax' ? 'minimax-cn' : rawProvider;
     const model = config.model ?? this.model;
-    const effectiveProvider = config.llmProvider ?? this.provider;
     const args = [
       '--print',
       '--no-session',

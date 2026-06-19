@@ -37,33 +37,18 @@ sandbox uses the same Restricted Token + Job Object model that Chromium
 and Edge use for renderer isolation. It is the recommended fallback when
 Docker Desktop is unavailable on Windows.
 
-### Windows Native Runner Sandbox Modes
-
-- **Light mode (default, non-elevated)**: Parent user permissions, Job
-  Object memory limits, process tree cleanup. NO filesystem isolation.
-- **Strict mode (requires Administrator)**: Restricted Token + workspace
-  DACL. Provides filesystem sandboxing.
-
-### Security model
-
-The Windows Native runner provides:
-
-- **Process isolation** via `CreateRestrictedToken` with
-  `WRITE_RESTRICTED` (light mode) or `WRITE_RESTRICTED` +
-  `DISABLE_MAX_PRIVILEGE` + `SANDBOX_INERT` (strict mode). The
-  sandboxed process cannot escalate privileges, impersonate the user,
-  or use `SeDebugPrivilege`.
-- **Filesystem isolation** only in strict mode, via a custom DACL
-  granting a per-workspace synthetic SID. The original DACL is backed
-  up so it can be restored on cleanup. Light mode provides no
-  filesystem isolation; the agent runs under the parent user's
-  permissions.
-- **Process-tree termination** via `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
-  If the DynFlow server process dies, the kernel terminates the agent
-  process and all of its children.
-- **Per-process memory cap** (default 2 GB) via
-  `JOB_OBJECT_LIMIT_PROCESS_MEMORY`.
-
+An opt-in sibling — **`PiAppContainerRunner`**
+(`DYNFLOW_RUNNER=pi-appcontainer`) — additionally creates a real
+Windows AppContainer profile per run via `userenv.dll`
+`CreateAppContainerProfile`. The profile allocates a per-run SID and
+a per-profile folder, and is torn down on cleanup. The process
+security boundary is the same Restricted Token + Job Object used by
+`WindowsNativeRunner`; the AppContainer profile is a tracking +
+discoverability surface (visible in `Get-AppxPackage`) and not yet
+an enforcement boundary. See [`docs/sandbox/windows-native.md`](docs/sandbox/windows-native.md#pi-appcontainer-runner)
+for the full contract and the follow-on work needed to wire
+`SECURITY_CAPABILITIES` + `STARTUPINFOEXW` for true AppContainer
+process enforcement.
 ### What is NOT protected
 
 - **Network access.** The agent has full network access. The Windows

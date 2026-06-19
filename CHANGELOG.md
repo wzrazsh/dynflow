@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `minimax` LLM provider (id `minimax`, OpenAI-compatible). Reuses
+  `OPENAI_API_KEY` and `OPENAI_BASE_URL`; model list:
+  `MiniMax-M3`, `minimax-m2`. Surfaced in `/api/system/info` and the
+  Start Run dialog whenever `OPENAI_API_KEY` is set.
+- `pi-appcontainer` runner: Windows AppContainer profile isolation
+  (`userenv.dll` `CreateAppContainerProfile` + per-run SID + per-run
+  folder) layered on top of the existing Restricted-Token + Job-Object
+  sandbox. Opt-in via `DYNFLOW_RUNNER=pi-appcontainer`. Caveat: the
+  process-attribute path (`SECURITY_CAPABILITIES` + `STARTUPINFOEXW`)
+  is a follow-on — today the profile is a tracking surface, the
+  actual process boundary remains the restricted-token sandbox.
+- Dynamic script engine: a QuickJS-based runner that accepts modern
+  DSL scripts (`workflow("…", async () => { … })`) with `phase()`,
+  `agent()`, `parallel(items, callback, { concurrency })`,
+  `checkpoint()`, `apply()`, and `log()`. The user's callback is
+  wrapped in `(async () => { … })()`, so native JavaScript loops
+  (`for`, `while`, `for…of`, recursion) and array helpers are all
+  available inside a phase. Legacy isolated-vm scripts
+  (`phase('p1', () => { agent('a1', '…') })`) are auto-migrated to
+  the dynamic form on workflow creation.
+- Durable step store: every script step (phase, agent, checkpoint,
+  apply, log) is recorded with a stable `stepKey` so the runtime can
+  resume and re-execute a partially-completed workflow without
+  re-running completed work.
+
+### Changed
+- Three Docker probes (`CuaAgentRunner.isAvailable`,
+  `DockerAgentRunner.isAvailable`, `WslDockerAgentRunner.isAvailable`)
+  now share a 3-second bounded `probeDockerAvailability` helper. A
+  hung `docker info` no longer wedges `/api/system/info`.
+
 ## [0.3.0] - 2026-06-06
 
 ### Added

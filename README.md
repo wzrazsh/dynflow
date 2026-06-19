@@ -19,7 +19,12 @@ maintainer automation, workflow templates, and local-first orchestration.
 ## Features
 
 - JavaScript workflow scripts with `phase()` and `agent()` declarations.
-- Sandboxed workflow parsing through `isolated-vm` with a fallback parser.
+- Modern QuickJS-based dynamic script engine: `workflow()` / `phase()` /
+  `agent()` / `parallel()` / `checkpoint()` / `apply()` / `log()` plus
+  native JS loops (`for`, `while`, `for…of`, recursion).
+- Sandboxed workflow parsing through `isolated-vm` (legacy) with a
+  fallback pattern parser; legacy scripts auto-migrate to the dynamic
+  DSL on creation.
 - Workflow validation with shared Zod schemas.
 - Sequential phase execution with parallel agents inside each phase.
 - Pause, resume, stop, fail, and restart-aware workflow states.
@@ -28,19 +33,25 @@ maintainer automation, workflow templates, and local-first orchestration.
   workspace (git-cloned or local path) mounted into a Cua Linux desktop
   container; Pi runs as a CLI process inside the container and exchanges
   JSONL events with the DynFlow server.
+- Windows-native sandboxed Pi agent (Restricted Token + Job Object via
+  Koffi FFI) and an opt-in Windows AppContainer profile runner.
+  Auto-selected on Windows when Docker is unavailable.
 - OpenAI-compatible legacy Docker agent runner is still available behind
   `DYNFLOW_RUNNER=docker` for fallback.
+- LLM provider support: `opencode` (default), `openai`, `minimax`
+  (OpenAI-compatible proxy), `anthropic`. Per-run override via the
+  Runtime Environment form.
 - Real-time workflow events over SSE.
 - React UI for creating workflows, browsing runs, templates, agents, and skills.
 - Meta-workflow APIs for scanning GitHub projects and registering discovered
   agents or skills.
-
 ## Architecture
 
 ```text
 packages/
-|-- shared/     TypeScript types and validation schemas
-|-- server/     Express API, workflow runtime, SQLite repository, SSE, sandbox
+|-- shared/     TypeScript types and validation schemas (including PROVIDER_INFO / RUNNER_INFO)
+|-- server/     Express API, QuickJS dynamic script engine, isolated-vm legacy parser,
+|               workflow runtime, SQLite repository, SSE, Windows sandbox (Koffi FFI)
 |-- web/        React + Vite single-page app
 |-- agent/      Legacy: container entrypoint for OpenAI-only Docker agent
 `-- cua-agent/  Cua + Pi Docker image (built from trycua/cua-xfce + @earendil-works/pi-coding-agent)
@@ -49,13 +60,18 @@ packages/
 Runtime flow:
 
 ```text
-workflow script -> sandbox parser -> validated definition -> SQLite run
-  -> runtime phases
-    -> CuaAgentRunner (default)
-       -> docker run dynflow-cua-pi:latest
-       -> mount per-workflow workspace into /home/cua/workspace
-       -> docker exec pi --mode json --no-session
-       -> parse JSONL, scan workspace for files
+workflow script (modern DSL or legacy phase/agent form)
+  -> legacy: isolated-vm parser -> auto-migrated to dynamic form
+  -> dynamic: QuickJS engine validates, then executes
+  -> durable step store (every phase/agent/checkpoint/apply/log has a stable key)
+  -> runner dispatch (auto-select chain: cua -> cua-pi -> windows-native -> pi-appcontainer -> docker)
+     -> CuaAgentRunner      : docker run dynflow-cua-pi:latest + docker exec pi --mode json
+     -> CuaPiRunner         : host pi CLI + Cua Computer Server (HTTP :8000)
+     -> PiCuaNativeRunner   : in-process runAgentLoop from @earendil-works/pi-agent-core
+     -> PiDirectRunner      : host pi CLI, no sandbox (opt-in)
+     -> WindowsNativeRunner : Win32 Restricted Token + Job Object via Koffi FFI
+     -> PiAppContainerRunner: per-run AppContainer profile (userenv.dll) + same restricted-token sandbox
+     -> DockerAgentRunner   : legacy OpenAI-only Docker agent
   -> SSE progress events -> web UI
 ```
 
@@ -80,8 +96,8 @@ npm run dev:server
 npm run dev:web
 ```
 
-The backend defaults to `http://localhost:3001` and the frontend defaults to
-`http://localhost:5173`.
+The backend defaults to `http://localhost:13001` and the frontend defaults to
+`http://localhost:15173`.
 
 ## Example Workflow
 
@@ -98,26 +114,30 @@ workflow("release-check", () => {
 });
 ```
 
-## Environment
-
-Copy `.env.example` to `.env` and set credentials for agent execution:
+Copy `.env.example` to `.env` and set credentials for agent execution.
+Available provider keys (resolution priority: `OPENCODE` > `OPENAI` > `MINIMAX_CN` > `MINIMAX` > `ANTHROPIC`):
 
 ```env
-# Provider API keys (priority: OPENCODE_API_KEY > OPENAI_API_KEY > ANTHROPIC_API_KEY)
+# Provider API keys
 OPENCODE_API_KEY=your_opencode_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
+MINIMAX_CN_API_KEY=your_minimax_cn_api_key_here     # MiniMax China (used when UI provider = "minimax")
+MINIMAX_API_KEY=your_minimax_api_key_here            # MiniMax International (fallback)
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
-# Provider base URL override (used by OpenCode / OpenAI compatible proxies)
+# MiniMax Anthropic-compatible endpoint (used by pi's minimax-cn provider)
+MINIMAX_API_HOST=https://api.minimaxi.com
+
+# Provider base URL override (used by opencode / openai / minimax proxies)
 OPENAI_BASE_URL=https://opencode.ai/zen/v1
 
-# Runner selection (default: cua)
+# Runner selection (default: cua, auto-selected on Windows)
 DYNFLOW_RUNNER=cua
 
 # Cua image (when DYNFLOW_RUNNER=cua)
 DYNFLOW_CUA_IMAGE=dynflow-cua-pi:latest
 
-# Pi binary / provider / model overrides (cua-pi, pi-cua-native, pi-direct runners)
+# Pi binary / provider / model overrides
 DYNFLOW_PI_BINARY=pi
 DYNFLOW_PI_PROVIDER=opencode
 DYNFLOW_PI_MODEL=mimo-v2.5-free
@@ -127,18 +147,22 @@ DYNFLOW_CUA_SERVER_URL=http://localhost:8000
 DYNFLOW_CUA_AUTOSTART=true
 DYNFLOW_PYTHON=python
 
+# Windows Native Sandbox
+DYNFLOW_WIN_SANDBOX_STRICT=0
+
 # Server
-HOST=127.0.0.1              # Server bind address (default: 127.0.0.1)
-PORT=3001
-DYNFLOW_CORS_ORIGINS=       # Comma-separated CORS origins (default: localhost:5173,127.0.0.1:5173)
+HOST=127.0.0.1
+PORT=13001
+DYNFLOW_CORS_ORIGINS=
 DB_PATH=./data/workflows.db
 ```
 
-`OPENAI_API_KEY` is the legacy fallback used by the OpenAI-only Docker agent
-(set `DYNFLOW_RUNNER=docker`). The `cua`, `cua-pi`, `pi-cua-native`, and
-`pi-direct` runners additionally consume `OPENCODE_API_KEY` and
-`ANTHROPIC_API_KEY` and are configured through `DYNFLOW_PI_*` / `DYNFLOW_CUA_*`
-variables above.
+### Provider notes
+
+- `opencode` uses `OPENCODE_API_KEY` + `OPENAI_BASE_URL`.
+- `openai` uses `OPENAI_API_KEY` + `OPENAI_BASE_URL`.
+- `minimax` (UI) maps to pi's `minimax-cn` internally. Runner passes `--provider minimax-cn` to pi, which sends anthropic-format requests to `MINIMAX_API_HOST/anthropic/v1/messages`. Requires `MINIMAX_CN_API_KEY`.
+- `anthropic` uses `ANTHROPIC_API_KEY`.
 
 ### Windows Native Runner
 
@@ -154,11 +178,31 @@ It provides two isolation modes:
   uses `CreateRestrictedToken` to drop privileges and applies a DACL
   on the workspace directory for filesystem sandboxing.
 
+>The Windows Native Runner (and the `pi-appcontainer` runner) both launch
+>the local `pi` CLI. On Windows hosts where neither is on `PATH`, install
+>it once with:
+>
+>```powershell
+>npm install -g @earendil-works/pi-coding-agent
+>```
+>
+>Then verify with `where pi` — `WindowsNativeRunner.isAvailable()` reports
+>`true` and the runner will find the binary at process launch time.
+>
+>An opt-in **Pi AppContainer runner** is also available
+>(`DYNFLOW_RUNNER=pi-appcontainer`). It allocates a per-run Windows
+>AppContainer profile (per-run SID + per-run folder) and disposes it on
+>cleanup. The actual process boundary is the same restricted-token
+>sandbox; the AppContainer profile is a tracking + discoverability
+>surface. See
+>[`docs/sandbox/windows-native.md`](docs/sandbox/windows-native.md#pi-appcontainer-runner)
+>for the full contract.
+
 ## Building the Cua image
 
 ```bash
 cd packages/cua-agent
-npm run build:image   # → tagged as dynflow-cua-pi:latest
+npm run build:image   # �?tagged as dynflow-cua-pi:latest
 ```
 
 ## Workspace support

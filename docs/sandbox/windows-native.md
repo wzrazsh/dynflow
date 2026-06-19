@@ -116,18 +116,8 @@ It does **not** provide:
 | Windows host with Docker Desktop installed and working | `cua` or `cua-pi` — same as Linux, runs in container. |
 | Windows host without Docker (Hyper-V off, WSL2 off, containers feature off) | **`windows-native`** — native process sandbox. |
 | Windows host with Cua Computer Server already running | `cua-pi` or `pi-cua-native` — uses the host `pi` against a Cua server. |
+| Windows host that needs a discoverable per-run AppContainer profile (operator tooling, postmortem) | **`pi-appcontainer`** (opt-in) — see "Pi AppContainer Runner" below. |
 | Quick local development with maximum isolation guarantees | Docker, if available. Windows Native is a fallback. |
-
-`windows-native` is a **fallback** for environments where the Docker
-path is not viable. It is not a replacement for the full
-container-based isolation. Choose it when:
-
-- Docker is unavailable for licensing or technical reasons.
-- You need a process to start in well under 2 seconds (Windows Native
-  cold-start is ~300 ms vs. ~3-5 s for `docker exec`).
-- The workflow does not require a full Linux userland.
-
-## Performance
 
 | Metric | Windows Native | Docker (`cua-pi`) |
 |---|---|---|
@@ -140,29 +130,58 @@ Windows Native is faster but only available on Windows. The
 `WindowsNativeRunner.isAvailable()` check returns `false` on Linux
 and macOS regardless of configuration.
 
+## Pi AppContainer Runner
+
+`PiAppContainerRunner` is a sibling of `WindowsNativeRunner` that
+creates a real Windows AppContainer profile per run and uses the same
+Restricted-Token + Job-Object sandbox for the actual process boundary.
+It is opt-in (`DYNFLOW_RUNNER=pi-appcontainer`) and falls in after
+`WindowsNativeRunner` in the auto-select chain.
+
+### What it does
+
+On every `run()` the runner:
+
+1. Calls `userenv.dll` `CreateAppContainerProfile` to allocate a
+   profile named `dynflow-pi-<agentId>` (sanitized). The call is
+   idempotent — if the profile already exists, the existing SID is
+   reused (`HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)` is treated as
+   success).
+2. Derives the AppContainer SID via
+   `DeriveAppContainerSidFromAppContainerName` and resolves the
+   per-profile folder via `GetAppContainerFolderPath`. The SID and
+   folder are returned in the `AppContainerProfile` handle.
+3. Logs the profile SID + folder path (visible in operator tools and
+   via `Get-AppxPackage`).
+4. Launches the child `pi` process under the same restricted-token +
+   job-object sandbox as `WindowsNativeRunner`.
+5. On cleanup, calls `DeleteAppContainerProfile` to tear down the
+   profile and release the SID.
+
+### Process-attribute caveat
+
+True AppContainer enforcement requires
+`STARTUPINFOEXW.lpAttributeList` carrying
+`PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` whose `AppContainerSid`
+points at the profile SID and whose `Capabilities` enumerates the
+granted capability SIDs (e.g. `internetClient`). That needs
+`process.ts`'s `CreateProcessAsUserW` extended to `STARTUPINFOEXW`
+with a managed `PROC_THREAD_ATTRIBUTE_LIST` arena. That work is
+deferred — today the profile is created and disposed correctly, but
+the actual process boundary is the existing restricted-token
+sandbox. **Do not claim full AppContainer enforcement in
+user-facing copy** until the `SECURITY_CAPABILITIES` wiring lands.
+
+### Security model
+
+Identical to `WindowsNativeRunner` (light + strict, network not
+isolated, no GUI/desktop restrictions, no Defender exclusions, no
+Event Log integration). The only addition is a per-run AppContainer
+profile namespace — a discoverable SID + folder, useful for
+operator tooling (`Get-AppxPackage` queries) and postmortem
+attribution, but not yet an enforcement boundary.
+
 ## Limitations
-
-- **`.cmd` shim resolution.** The `pi` CLI on Windows is a `.cmd` shim
-  that ultimately runs `node dist/cli.js`. The runner detects this and
-  invokes `node` directly with the underlying JavaScript path, so
-  `CreateProcessAsUserW` can launch it.
-- **No parent-job detection.** If the DynFlow server itself is
-  running inside a Job Object (e.g., under `psexec`, a CI runner, or
-  Windows Container mode), `AssignProcessToJobObject` will fail with
-  `ERROR_ACCESS_DENIED`. The runner reports this as a clear
-  `JobObjectError`. The fix is to run the server outside any
-  job, or accept the failure and fall back to the next runner.
-- **No streaming stdout.** Like the other DynFlow runners, output is
-  buffered until the process exits. The TypeScript runner uses the
-  existing `AgentRunConfig.streaming: false` path; per the plan
-  guardrail, real-time streaming is out of scope.
-- **Profile persistence.** The PowerShell script
-  `New-SandboxProfile.ps1` records profiles to
-  `%LOCALAPPDATA%\dynflow\sandbox-profiles.json` so operators can
-  inspect them. The TypeScript runner does not read this file; it
-  creates and destroys sandbox state inline per run.
-
-## Troubleshooting
 
 ### `isAvailable()` returns `false`
 
@@ -189,9 +208,11 @@ depending on group policy. If you see this error in the server logs,
 your user account or group policy is preventing the privilege
 acquisition. Workarounds:
 
-- Run the DynFlow server elevated.
-- Or use `DYNFLOW_RUNNER=cua-pi` (which runs `pi` on the host, no
-  token manipulation needed).
+3. The `pi` agent is failing during `resolvePiBinary` because `pi` is
+   not on `PATH`. Install `@earendil-works/pi-coding-agent` via
+   `npm install -g`. Verify with `where pi`. The same prerequisite
+   applies to `PiAppContainerRunner` — the profile API is independent
+   of the `pi` binary.
 
 ### "ERROR_ACCESS_DENIED" (5) on `AssignProcessToJobObject`
 
